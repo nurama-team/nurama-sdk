@@ -1,0 +1,36 @@
+{
+  "name": "@nurama/types",
+  "version": "1.4.0",
+  "description": "Shared TypeScript types for the Nurama ecosystem",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "node scripts/dev.cjs",
+    "test": "echo \"No tests for types package\" && exit 0"
+  },
+  "keywords": [
+    "nurama",
+    "types"
+  ],
+  "author": "Nurama Team",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nurama-team/nurama.git",
+    "directory": "packages/types"
+  }
+}

@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nurama SDK Browser Example</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        label { display: block; margin-top: 10px; }
+        input[type="text"], input[type="password"] { width: 300px; padding: 5px; }
+        button { margin-top: 15px; padding: 8px 15px; }
+        pre { background-color: #f4f4f4; border: 1px solid #ddd; padding: 10px; margin-top: 15px; white-space: pre-wrap; word-wrap: break-word; max-height: 300px; overflow: auto; }
+        .error { color: red; font-weight: bold; }
+        .success { color: green; font-weight: bold; }
+        .section { margin-top: 30px; border-top: 1px solid #ddd; padding-top: 15px; }
+        .progress-container { margin-top: 10px; width: 100%; background-color: #f0f0f0; border-radius: 4px; }
+        .progress-bar { height: 20px; background-color: #4CAF50; border-radius: 4px; text-align: center; line-height: 20px; color: white; transition: width 0.3s; }
+        .hidden { display: none; }
+        .event { margin-top: 8px; padding: 8px; border-radius: 4px; background-color: #e6f7ff; border-left: 4px solid #1890ff; }
+        .websocket-log { max-height: 300px; overflow-y: auto; margin-top: 15px; font-family: monospace; }
+        #websocketEvents { background-color: #f9f9f9; padding: 10px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>Nurama SDK Browser Example</h1>
+
+    <div class="section">
+        <h2>1. Authentication</h2>
+        <form id="configForm">
+            <label for="apiUrl">API Base URL:</label>
+            <input type="text" id="apiUrl" name="apiUrl" value="https://orama-staging-api.23rdc.com" required>
+            
+            <label for="wsUrl">WebSocket URL (optional):</label>
+            <input type="text" id="wsUrl" name="wsUrl" value="https://orama-socket-staging.23rdc.com" placeholder="Optional - uses API URL if not provided">
+
+            <label for="email">Email:</label>
+            <input type="text" id="email" name="email" required>
+
+            <label for="password">Password:</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">Login</button>
+        </form>
+
+        <button id="getUserBtn" disabled>Get User Data</button>
+    </div>
+
+    <div class="section">
+        <h2>2. WebSocket Connection</h2>
+        <div id="websocketSection" class="hidden">
+            <form id="projectChannelForm">
+                <label for="projectChannelId">Project ID to connect:</label>
+                <input type="text" id="projectChannelId" required>
+                
+                <label for="visibility">Visibility:</label>
+                <select id="visibility">
+                    <option value="creator">Creator</option>
+                    <option value="reviewer">Reviewer</option>
+                </select>
+                
+                <button type="submit" id="connectBtn">Connect to Project Channel</button>
+            </form>
+            
+            <div class="websocket-controls hidden" id="websocketControls">
+                <button id="disconnectBtn">Disconnect</button>
+                <p id="connectionStatus" class="success">Not connected</p>
+            </div>
+            
+            <h3>WebSocket Events:</h3>
+            <div id="websocketEvents" class="websocket-log"></div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>3. File Upload</h2>
+        <div id="uploadSection" class="hidden">
+            <label for="projectId">Project ID:</label>
+            <input type="text" id="projectId" name="projectId" required>
+
+            <label for="fileUpload">Select File to Upload:</label>
+            <input type="file" id="fileUpload" name="fileUpload">
+
+            <div class="progress-container hidden" id="progressContainer">
+                <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
+            </div>
+
+            <button id="uploadBtn">Upload File</button>
+            
+            <div id="downloadSection" class="hidden">
+                <button id="downloadBtn">Download Uploaded File</button>
+            </div>
+        </div>
+    </div>
+
+    <h2>Output:</h2>
+    <pre id="output">Enter details and click Login.</pre>
+
+    <script src="nurama-sdk.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+
+    <script>
+      // Wait for the DOM and the SDK script to be ready
+      document.addEventListener('DOMContentLoaded', (event) => {
+        console.log('DOM fully loaded and parsed');
+
+        // Authentication elements
+        const configForm = document.getElementById('configForm');
+        const getUserBtn = document.getElementById('getUserBtn');
+        const output = document.getElementById('output');
+        const apiUrlInput = document.getElementById('apiUrl');
+        const wsUrlInput = document.getElementById('wsUrl');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+
+        // WebSocket elements
+        const websocketSection = document.getElementById('websocketSection');
+        const projectChannelForm = document.getElementById('projectChannelForm');
+        const projectChannelIdInput = document.getElementById('projectChannelId');
+        const visibilitySelect = document.getElementById('visibility');
+        const connectBtn = document.getElementById('connectBtn');
+        const websocketControls = document.getElementById('websocketControls');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const websocketEvents = document.getElementById('websocketEvents');
+
+        // Upload elements
+        const uploadSection = document.getElementById('uploadSection');
+        const projectIdInput = document.getElementById('projectId');
+        const fileUploadInput = document.getElementById('fileUpload');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const downloadSection = document.getElementById('downloadSection');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let client = null;
+        let currentUserId = null;
+        let uploadedAssetId = null;
+        let currentChannel = null;
+
+        function logOutput(message, type = 'info') {
+            const messageElement = document.createElement('div');
+            if (type === 'error') {
+                messageElement.className = 'error';
+                messageElement.textContent = `Error: ${message}`;
+                console.error(message); // Also log to console
+            } else if (type === 'success') {
+                messageElement.className = 'success';
+                messageElement.textContent = message;
+            } else {
+                 messageElement.textContent = message;
+            }
+            // Prepend new messages
+            output.insertBefore(messageElement, output.firstChild);
+        }
+
+        function logJson(data, prefix = '') {
+            const message = `${prefix}${JSON.stringify(data, null, 2)}`;
+            logOutput(message);
+        }
+
+        function logWebSocketEvent(event) {
+            console.log('WebSocket event:', event);
+            
+            const eventElement = document.createElement('div');
+            eventElement.className = 'event';
+            
+            // Format the timestamp
+            const timestamp = new Date().toLocaleTimeString();
+            
+            // Create the event header with timestamp and event type
+            const headerElement = document.createElement('div');
+            headerElement.innerHTML = `<strong>[${timestamp}] Event: ${event.type || 'notification'}</strong>`;
+            eventElement.appendChild(headerElement);
+            
+            // Create a pre element for the formatted JSON
+            const contentElement = document.createElement('pre');
+            contentElement.textContent = JSON.stringify(event, null, 2);
+            eventElement.appendChild(contentElement);
+            
+            // Add to the WebSocket events log
+            websocketEvents.insertBefore(eventElement, websocketEvents.firstChild);
+        }
+
+        function updateProgress(progress) {
+            progressBar.style.width = `${progress.percentComplete}%`;
+            progressBar.textContent = `${progress.percentComplete}% (Part ${progress.partNumber}/${progress.totalParts})`;
+        }
+
+        configForm.addEventListener('submit', async (event) => {
+            console.log('Submit event listener started.');
+            event.preventDefault();
+            console.log('event.preventDefault() called.');
+
+            getUserBtn.disabled = true; // Disable while logging in
+            uploadSection.classList.add('hidden');
+            websocketSection.classList.add('hidden');
+            websocketControls.classList.add('hidden');
+            currentUserId = null;
+            output.textContent = ''; // Clear previous output
+            logOutput('Initializing client and attempting login...');
+
+            try {
+                const baseURL = apiUrlInput.value.trim();
+                const websocketURL = wsUrlInput.value.trim() || baseURL; // Use API URL if WebSocket URL not provided
+                const email = emailInput.value.trim();
+                const password = passwordInput.value;
+
+                if (!baseURL || !email || !password) {
+                    logOutput('Please fill in all fields.', 'error');
+                    if (!currentUserId) getUserBtn.disabled = true; 
+                    else getUserBtn.disabled = false;
+                    return;
+                }
+
+                // Instantiate the client with WebSocket URL if provided
+                client = new NuramaClient(baseURL, {
+                    browserMode: true, // Enable browser mode for localStorage support
+                    debug: true, // Enable console logging from SDK
+                    websocketURL: websocketURL // Set optional WebSocket URL
+                });
+
+                logOutput(`Attempting login for ${email}...`);
+                const loginResult = await client.auth.login({
+                    login: email,
+                    password: password,
+                });
+
+                // Handle potential MFA requirement
+                if (loginResult && loginResult.tokens && loginResult.tokens.verifyMfa) {
+                     logOutput('Login requires MFA verification. MFA token received.', 'success');
+                     logOutput('This example cannot complete MFA. Cannot fetch user data yet.');
+                     getUserBtn.disabled = true; // Explicitly ensure it's disabled
+                }
+                // Handle successful login
+                else if (loginResult && loginResult.user && loginResult.tokens && loginResult.tokens.access) {
+                    logOutput('Login successful!', 'success');
+                    logJson(loginResult.user, 'User details from login: ');
+                    currentUserId = loginResult.user.id;
+                    getUserBtn.disabled = false; // Enable button
+                    uploadSection.classList.remove('hidden'); // Show upload section
+                    websocketSection.classList.remove('hidden'); // Show WebSocket section
+                } else {
+                    // Handle unexpected login response
+                    logOutput('Login failed. Unexpected response structure.', 'error');
+                    logJson(loginResult, 'Login Response: ');
+                    getUserBtn.disabled = true; // Keep disabled on failure
+                }
+
+            } catch (error) {
+                 logOutput(`Login failed: ${error.message || 'Unknown error'}`, 'error');
+                 if (error.data) {
+                     logJson(error.data, 'Error Data: ');
+                 } else {
+                     console.error("Full login error:", error);
+                 }
+                 getUserBtn.disabled = true; 
+            }
+        });
+
+        getUserBtn.addEventListener('click', async () => {
+            if (!client || !currentUserId) {
+                logOutput('Client not initialized or user ID not available. Please login first.', 'error');
+                return;
+            }
+
+            logOutput(`Fetching data for user ID: ${currentUserId}...`);
+            getUserBtn.disabled = true; // Disable during fetch
+
+            try {
+                const userData = await client.user.getUser(currentUserId);
+                logOutput('Fetched user data:', 'success');
+                logJson(userData);
+            } catch (error) {
+                logOutput(`Failed to fetch user data: ${error.message || 'Unknown error'}`, 'error');
+                 if (error.data) {
+                     logJson(error.data, 'Error Data: ');
+                 } else {
+                      console.error("Full getUser error:", error);
+                 }
+            } finally {
+                 if (currentUserId) {
+                     getUserBtn.disabled = false;
+                 }
+            }
+        });
+
+        // WebSocket Project Channel Connection
+        projectChannelForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            
+            if (!client) {
+                logOutput('Client not initialized. Please login first.', 'error');
+                return;
+            }
+            
+            const projectId = projectChannelIdInput.value.trim();
+            const visibility = visibilitySelect.value;
+            
+            if (!projectId) {
+                logOutput('Please enter a Project ID.', 'error');
+                return;
+            }
+            
+            try {
+                // Disconnect from previous channel if connected
+                if (currentChannel) {
+                    logOutput(`Disconnecting from previous channel: ${currentChannel}`);
+                    await client.socket.disconnect(currentChannel);
+                    currentChannel = null;
+                }
+                
+                // Create channel path for project visibility
+                const channel = `/project/${projectId}/${visibility}`;
+                logOutput(`Connecting to channel: ${channel}...`);
+                
+                // Connect to the channel
+                await client.socket.connect(channel);
+                currentChannel = channel;
+                
+                // Subscribe to notification events
+                await client.socket.subscribe(channel, 'notification', (event) => {
+                    logOutput(`Received notification from ${channel}`, 'success');
+                    logWebSocketEvent(event);
+                });
+                
+                logOutput(`Successfully connected to project channel: ${channel}`, 'success');
+                connectionStatus.textContent = `Connected to: ${channel}`;
+                connectionStatus.className = 'success';
+                websocketControls.classList.remove('hidden');
+                
+            } catch (error) {
+                logOutput(`WebSocket connection failed: ${error.message || 'Unknown error'}`, 'error');
+                console.error("WebSocket connection error:", error);
+                connectionStatus.textContent = 'Connection failed';
+                connectionStatus.className = 'error';
+            }
+        });
+        
+        // Disconnect Button
+        disconnectBtn.addEventListener('click', async () => {
+            if (!client || !currentChannel) {
+                logOutput('Not connected to any channel.', 'error');
+                return;
+            }
+            
+            try {
+                logOutput(`Disconnecting from channel: ${currentChannel}...`);
+                await client.socket.disconnect(currentChannel);
+                logOutput(`Disconnected from channel: ${currentChannel}`, 'success');
+                
+                currentChannel = null;
+                connectionStatus.textContent = 'Disconnected';
+                connectionStatus.className = '';
+                websocketControls.classList.add('hidden');
+                
+            } catch (error) {
+                logOutput(`Disconnect failed: ${error.message || 'Unknown error'}`, 'error');
+                console.error("Disconnect error:", error);
+            }
+        });
+
+        // File Upload Implementation
+        uploadBtn.addEventListener('click', async () => {
+            if (!client) {
+                logOutput('Client not initialized. Please login first.', 'error');
+                return;
+            }
+
+            const projectId = projectIdInput.value.trim();
+            const file = fileUploadInput.files[0];
+
+            if (!projectId) {
+                logOutput('Please enter a Project ID.', 'error');
+                return;
+            }
+
+            if (!file) {
+                logOutput('Please select a file to upload.', 'error');
+                return;
+            }
+
+            uploadBtn.disabled = true;
+            downloadSection.classList.add('hidden');
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+            
+            try {
+                logOutput(`Starting upload for file: ${file.name}`);
+
+                // Generate checksum for file identification
+                const dateString = Date.now().toString();
+                // Ensuring we use MD5 which produces a 32-character hash
+                const checksum = CryptoJS.MD5(dateString).toString();
+                console.log('checksum: ', checksum);
+                
+                // Prepare file metadata
+                const fileSize = file.size / (1024 * 1024); // Convert to MB
+                const files = { 
+                    files: [
+                        { id: 1, name: file.name, sizeInMB: fileSize, checksum }
+                    ] 
+                };
+                
+                // Step 1: Create the asset
+                logOutput(`Creating asset for file ${file.name}...`);
+                const assetResult = await client.project.createAssets(projectId, files);
+                logJson(assetResult, 'Asset creation response: ');
+                
+                if (!assetResult.length || !assetResult[0].signedUrlData) {
+                    throw new Error('Failed to get signed URLs for upload');
+                }
+                
+                // Step 2: Extract information needed for multipart upload
+                const signedUrls = assetResult[0].signedUrlData.urls;
+                const key = assetResult[0].signedUrlData.key;
+                const uploadId = assetResult[0].signedUrlData.uploadId;
+                
+                logOutput(`Starting multipart upload with ${signedUrls.length} parts...`);
+                
+                // Step 3: Perform the multipart upload
+                const uploadResult = await client.asset.multipartUpload(
+                    file, // Pass the actual File object instead of ArrayBuffer
+                    signedUrls,
+                    key,
+                    uploadId,
+                    {
+                        onProgress: updateProgress,
+                        maxRetries: 3
+                    }
+                );
+                
+                logOutput('Multipart upload complete!', 'success');
+                logOutput(`Parts uploaded: ${uploadResult.parts.length}`);
+                
+                // Step 4: Complete the multipart upload
+                logOutput('Completing multipart upload...');
+                const completeResult = await client.asset.completeUpload(uploadResult);
+                logOutput('Upload completion result:', 'success');
+                logJson(completeResult);
+                
+                // Store the asset ID for potential download
+                uploadedAssetId = assetResult[0].asset.id;
+                downloadSection.classList.remove('hidden');
+                
+                logOutput('File upload complete. Check WebSocket events to see notifications!', 'success');
+                
+            } catch (error) {
+                logOutput(`Upload failed: ${error.message || 'Unknown error'}`, 'error');
+                if (error.data) {
+                    logJson(error.data, 'Error Data: ');
+                } else {
+                    console.error("Full upload error:", error);
+                }
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        });
+        
+        // Download Button Click Handler
+        downloadBtn.addEventListener('click', async () => {
+            if (!client || !uploadedAssetId) {
+                logOutput('No uploaded file available for download.', 'error');
+                return;
+            }
+            
+            downloadBtn.disabled = true;
+            
+            try {
+                logOutput(`Requesting download for asset ID: ${uploadedAssetId}`);
+                
+                // Wait a moment to make sure the file is processed
+                logOutput('Waiting for a few seconds before downloading...');
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                const downloadResponse = await client.asset.downloadAssets([uploadedAssetId]);
+                logOutput('Download links received:', 'success');
+                logJson(downloadResponse);
+                
+                if (downloadResponse && downloadResponse.length > 0) {
+                    const downloadInfo = downloadResponse[0];
+                    logOutput(`Downloading ${downloadInfo.fileName}...`);
+                    
+                    // Create a link element and trigger download
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = downloadInfo.url;
+                    downloadLink.download = downloadInfo.fileName;
+                    downloadLink.style.display = 'none';
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    
+                    logOutput(`Download initiated for ${downloadInfo.fileName}`, 'success');
+                } else {
+                    logOutput('No download links received.', 'error');
+                }
+                
+            } catch (error) {
+                logOutput(`Download failed: ${error.message || 'Unknown error'}`, 'error');
+                if (error.data) {
+                    logJson(error.data, 'Error Data: ');
+                } else {
+                    console.error("Full download error:", error);
+                }
+            } finally {
+                downloadBtn.disabled = false;
+            }
+        });
+
+        // Handle page unload - disconnect WebSocket connections
+        window.addEventListener('beforeunload', () => {
+            if (client && currentChannel) {
+                try {
+                    client.socket.disconnectAll();
+                } catch (e) {
+                    console.error('Error disconnecting WebSockets:', e);
+                }
+            }
+        });
+      }); // End of DOMContentLoaded listener
+    </script>
+</body>
+</html> 
