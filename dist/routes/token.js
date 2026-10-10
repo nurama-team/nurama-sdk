@@ -34,6 +34,28 @@ export default function createTokenMethods(client) {
             });
         },
         /**
+         * Replace the scopes on one of the caller's Personal Access Tokens.
+         *
+         * `scopes` is the complete new set, not a delta. This exists because
+         * the scope registry grows over time: a token minted before a scope
+         * existed cannot hold it, and without this the only remedy is minting
+         * a replacement and reconfiguring everywhere the old one is used.
+         *
+         * The change takes effect on the token's very next request. Scopes
+         * remain a ceiling, never a floor — widening a token never lets it do
+         * anything its owner cannot already do.
+         */
+        async updateTokenScopes(tokenId, data) {
+            if (!tokenId)
+                throw new Error('tokenId is required.');
+            return client._request({
+                method: 'PATCH',
+                endpoint: `/v1/tokens/${tokenId}`,
+                body: data,
+                sendJWT: true,
+            });
+        },
+        /**
          * Revoke one of the caller's Personal Access Tokens. The revocation
          * is immediate — the token will return 401 on the very next request.
          */

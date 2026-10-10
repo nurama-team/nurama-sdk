@@ -7880,6 +7880,118 @@
           sendJWT: true
         });
       },
+      /** The queue of people waiting on a decision for this project. */
+      async getJoinRequests(params) {
+        if (!params?.projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "GET",
+          endpoint: "/v1/join-links/requests",
+          params,
+          sendJWT: true
+        });
+      },
+      /**
+       * The caller's own requests still waiting on a decision.
+       *
+       * Needs no `projectId`: it is scoped server-side to the caller, who is not
+       * a member of the projects they are waiting on and so cannot read those
+       * projects' queues.
+       */
+      async getMyJoinRequests() {
+        return client._request({
+          method: "GET",
+          endpoint: "/v1/join-links/requests/mine",
+          sendJWT: true
+        });
+      },
+      /**
+       * Approve a request and admit the person.
+       *
+       * Seats and the link's remaining uses are re-checked here, not when the
+       * request was made — a queue outlives the capacity that existed when it was
+       * filled, so approval can legitimately fail on a seat limit.
+       */
+      async approveJoinRequest(requestId, projectId) {
+        if (!requestId) throw new Error("requestId is required.");
+        if (!projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/join-links/requests/${requestId}/approve`,
+          body: { projectId },
+          sendJWT: true
+        });
+      },
+      /**
+       * Reject a request, optionally barring the person.
+       *
+       * Passing `ban` is destructive beyond the refusal: a ban REMOVES an existing
+       * membership, so it can take away access the person already had in scope.
+       * It is a separate field for that reason, never implied by the rejection.
+       */
+      async rejectJoinRequest(requestId, data) {
+        if (!requestId) throw new Error("requestId is required.");
+        if (!data?.projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/join-links/requests/${requestId}/reject`,
+          body: data,
+          sendJWT: true
+        });
+      },
+      /**
+       * Change or lift the cooldown on a rejected request.
+       *
+       * Only a rejected request has one; `reapplyAfter: null` lifts it, letting
+       * the person ask again straight away. A barred person is refused — the ban
+       * already blocks every path, so lifting that is the action that matters.
+       */
+      async updateJoinRequestCooldown(requestId, data) {
+        if (!requestId) throw new Error("requestId is required.");
+        if (!data?.projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "PATCH",
+          endpoint: `/v1/join-links/requests/${requestId}/cooldown`,
+          body: { projectId: data.projectId, reapplyAfter: data.reapplyAfter ?? null },
+          sendJWT: true
+        });
+      },
+      /**
+       * Bar someone, without a request to refuse.
+       *
+       * Destructive: the ban REMOVES every membership the person holds in its
+       * scope, so a `workspace` ban clears them out of every project in it. An
+       * owner cannot be barred, and neither can you bar yourself.
+       */
+      async createResourceBan(data) {
+        if (!data?.projectId) throw new Error("projectId is required.");
+        if (!data?.userId) throw new Error("userId is required.");
+        if (!data?.scope) throw new Error("scope is required.");
+        return client._request({
+          method: "POST",
+          endpoint: "/v1/join-links/bans",
+          body: data,
+          sendJWT: true
+        });
+      },
+      /** People barred from this project, newest first. */
+      async getResourceBans(params) {
+        if (!params?.projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "GET",
+          endpoint: "/v1/join-links/bans",
+          params,
+          sendJWT: true
+        });
+      },
+      /** Lift a ban. It does not restore any membership the ban removed. */
+      async liftResourceBan(banId) {
+        if (!banId) throw new Error("banId is required.");
+        return client._request({
+          method: "DELETE",
+          endpoint: `/v1/join-links/bans/${banId}`,
+          sendJWT: true
+        });
+      },
       /** Update a join link's settings (role, mode, domains, expiry, enable/disable). */
       async updateJoinLink(linkId, data) {
         if (!linkId) throw new Error("linkId is required.");
@@ -8306,6 +8418,19 @@
     "reconnect_failed",
     "reconnect"
   ]);
+  var RECONNECTION_DELAY = 1e3;
+  var RECONNECTION_DELAY_MAX = 3e4;
+  var SERVER_CLOSE_RECONNECT_SPREAD = 1e4;
+  var spreadReconnectAfterServerClose = (socket) => {
+    const manager = socket.io;
+    if (typeof manager?.reconnectionDelay !== "function") return;
+    socket.on("disconnect", (reason) => {
+      if (reason === "transport close") {
+        manager.reconnectionDelay(RECONNECTION_DELAY + Math.random() * SERVER_CLOSE_RECONNECT_SPREAD);
+      }
+    });
+    socket.on("connect", () => manager.reconnectionDelay(RECONNECTION_DELAY));
+  };
   function createSocketMethods(client) {
     const activeConnections = {};
     const debug = client.debug;
@@ -8359,12 +8484,12 @@
         query: { token },
         // Reconnection configuration for resilience
         reconnection: socketOptions.autoReconnect,
-        reconnectionAttempts: 10,
-        // Maximum reconnection attempts before giving up
-        reconnectionDelay: 1e3,
-        // Start with 1 second delay
-        reconnectionDelayMax: 3e4,
-        // Max delay of 30 seconds between attempts
+        // Never give up: the server may refuse connections for a while (busy, or a deploy draining), and after a
+        // final failure socket.io stops for good without telling the app (the manager's 'reconnect_failed' never
+        // reaches socket listeners). Retries settle at one every ~30s.
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: RECONNECTION_DELAY,
+        reconnectionDelayMax: RECONNECTION_DELAY_MAX,
         randomizationFactor: 0.5,
         // Add jitter to avoid thundering herd problem
         // Connection timeout
@@ -8387,11 +8512,19 @@
         listeners: {}
       };
       activeConnections[channel] = socketChannel;
+      spreadReconnectAfterServerClose(socket);
       return new Promise((resolve, reject) => {
         let settled = false;
+        let hasConnected = false;
         socket.on("connect", () => {
           _log(`Connected to channel: ${channel}`);
           activeConnections[channel] = socketChannel;
+          if (hasConnected) {
+            _log(`Reconnected to channel ${channel}`);
+            const reconnectListeners = socketChannel.listeners["reconnect"] || /* @__PURE__ */ new Set();
+            reconnectListeners.forEach((listener) => listener({ type: "reconnect" }));
+          }
+          hasConnected = true;
           if (!settled) {
             settled = true;
             resolve(socketChannel);
@@ -8403,15 +8536,6 @@
             settled = true;
             resolve(socketChannel);
           }
-        });
-        socket.on("reconnect_attempt", (attempt) => {
-          _log(`Reconnection attempt ${attempt} for channel: ${channel}`);
-        });
-        socket.on("reconnect", (attempt) => {
-          _log(`Reconnected to channel ${channel} after ${attempt} attempts`);
-          activeConnections[channel] = socketChannel;
-          const reconnectListeners = socketChannel.listeners["reconnect"] || /* @__PURE__ */ new Set();
-          reconnectListeners.forEach((listener) => listener({ type: "reconnect", attempt }));
         });
         socket.on("reconnect_failed", () => {
           _log(`Reconnection failed for channel ${channel} after maximum attempts`);
@@ -8492,9 +8616,10 @@
         query: { publicToken },
         // Reconnection configuration for resilience
         reconnection: socketOptions.autoReconnect,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1e3,
-        reconnectionDelayMax: 3e4,
+        reconnectionAttempts: Infinity,
+        // as connect(): never give up silently
+        reconnectionDelay: RECONNECTION_DELAY,
+        reconnectionDelayMax: RECONNECTION_DELAY_MAX,
         randomizationFactor: 0.5,
         // Connection timeout
         timeout: 2e4,
@@ -8509,6 +8634,7 @@
         channel,
         listeners: {}
       };
+      spreadReconnectAfterServerClose(socket);
       return new Promise((resolve, reject) => {
         socket.on("connect", () => {
           _log(`Connected to public channel: ${channel}`);
@@ -8518,12 +8644,6 @@
         socket.on("connect_error", (error) => {
           _log(`Connection error for public channel ${channel}:`, error);
           reject(error);
-        });
-        socket.on("reconnect_attempt", (attempt) => {
-          _log(`Reconnection attempt ${attempt} for public channel: ${channel}`);
-        });
-        socket.on("reconnect", (attempt) => {
-          _log(`Reconnected to public channel ${channel} after ${attempt} attempts`);
         });
         socket.on("reconnect_failed", () => {
           _log(`Reconnection failed for public channel ${channel} after maximum attempts`);
@@ -10331,6 +10451,10 @@
       /**
        * Revoke the bot's current API key and issue a new one.
        * The new raw key is returned once.
+       *
+       * The replacement carries the old key's scopes verbatim, so this is not a
+       * way to pick up scopes added to the registry since the key was minted —
+       * `updateBotKeyScopes` is.
        */
       async rotateBotKey(workspaceId, botId) {
         if (!workspaceId) throw new Error("workspaceId is required.");
@@ -10338,6 +10462,65 @@
         return client._request({
           method: "POST",
           endpoint: `/v1/workspaces/${workspaceId}/bots/${botId}/rotate-key`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Mint an ADDITIONAL API key for the bot, up to 5 live keys.
+       *
+       * Unlike `rotateBotKey`, the bot's existing keys keep working — which is
+       * what makes a zero-downtime changeover possible: mint, move traffic over,
+       * then revoke the old key. The raw key is returned once.
+       */
+      async createBotKey(workspaceId, botId, keyData) {
+        if (!workspaceId) throw new Error("workspaceId is required.");
+        if (!botId) throw new Error("botId is required.");
+        if (!keyData?.name) throw new Error("name is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/workspaces/${workspaceId}/bots/${botId}/keys`,
+          body: keyData,
+          sendJWT: true
+        });
+      },
+      /**
+       * Replace the scopes on one of the bot's API keys, in place.
+       *
+       * A key's scopes are a snapshot taken when it was minted, and the registry
+       * grows — a key created before a scope existed cannot hold it. Rotation is
+       * not a substitute: `rotateBotKey` copies the old scope set onto the
+       * replacement, so a stale key stays stale through every rotation.
+       *
+       * This matters most for keys minted with `scopes` omitted, which means
+       * "the full registry" as it stood that day, not "whatever the full registry
+       * becomes".
+       *
+       * The secret is unchanged — every caller configured with this key keeps
+       * working, which is the whole point. Requires `canManageBots`.
+       */
+      async updateBotKeyScopes(workspaceId, botId, keyId, data) {
+        if (!workspaceId) throw new Error("workspaceId is required.");
+        if (!botId) throw new Error("botId is required.");
+        if (!keyId) throw new Error("keyId is required.");
+        return client._request({
+          method: "PATCH",
+          endpoint: `/v1/workspaces/${workspaceId}/bots/${botId}/keys/${keyId}`,
+          body: data,
+          sendJWT: true
+        });
+      },
+      /**
+       * Revoke one of the bot's API keys, leaving its others working.
+       * A revoked key stops authenticating immediately and frees a slot
+       * against the 5-key cap.
+       */
+      async revokeBotKey(workspaceId, botId, keyId) {
+        if (!workspaceId) throw new Error("workspaceId is required.");
+        if (!botId) throw new Error("botId is required.");
+        if (!keyId) throw new Error("keyId is required.");
+        return client._request({
+          method: "DELETE",
+          endpoint: `/v1/workspaces/${workspaceId}/bots/${botId}/keys/${keyId}`,
           sendJWT: true
         });
       },
@@ -10783,6 +10966,27 @@
         });
       },
       /**
+       * Replace the scopes on one of the caller's Personal Access Tokens.
+       *
+       * `scopes` is the complete new set, not a delta. This exists because
+       * the scope registry grows over time: a token minted before a scope
+       * existed cannot hold it, and without this the only remedy is minting
+       * a replacement and reconfiguring everywhere the old one is used.
+       *
+       * The change takes effect on the token's very next request. Scopes
+       * remain a ceiling, never a floor — widening a token never lets it do
+       * anything its owner cannot already do.
+       */
+      async updateTokenScopes(tokenId, data) {
+        if (!tokenId) throw new Error("tokenId is required.");
+        return client._request({
+          method: "PATCH",
+          endpoint: `/v1/tokens/${tokenId}`,
+          body: data,
+          sendJWT: true
+        });
+      },
+      /**
        * Revoke one of the caller's Personal Access Tokens. The revocation
        * is immediate — the token will return 401 on the very next request.
        */
@@ -10791,6 +10995,38 @@
         return client._request({
           method: "DELETE",
           endpoint: `/v1/tokens/${tokenId}`,
+          sendJWT: true
+        });
+      }
+    };
+  }
+
+  // src/routes/oauthGrant.ts
+  function createOAuthGrantMethods(client) {
+    return {
+      /**
+       * List the applications the caller has authorised, newest first.
+       * Expired grants are omitted by the server.
+       */
+      async listGrants() {
+        const res = await client._request({
+          method: "GET",
+          endpoint: "/v1/oauth-grants",
+          sendJWT: true,
+          bypassCache: true
+        });
+        return res.results;
+      },
+      /**
+       * Withdraw an application's access: the grant and every token issued
+       * under it. An access token already in flight stays valid until it
+       * expires, so revocation is not instantaneous for a request under way.
+       */
+      async revokeGrant(grantId) {
+        if (!grantId) throw new Error("grantId is required.");
+        return client._request({
+          method: "DELETE",
+          endpoint: `/v1/oauth-grants/${grantId}`,
           sendJWT: true
         });
       }
@@ -10989,10 +11225,10 @@
 
   // src/version.ts
   var SDK_VERSION = {
-    version: "1.4.0",
-    buildTimestamp: "2026-10-03T11:17:12.715Z",
-    buildHash: "60ddbec0797c9d1bdf96aaf49b69dda5",
-    gitCommit: "626c707",
+    version: "1.4.1",
+    buildTimestamp: "2026-10-10T06:58:40.258Z",
+    buildHash: "f6505e2eb9725dc8d239bb401ced8f88",
+    gitCommit: "1c00e18",
     dirty: false
   };
 
@@ -11048,6 +11284,7 @@
       this.invalidateCacheOnMutation = options.invalidateCacheOnMutation === void 0 ? true : options.invalidateCacheOnMutation;
       this._onUnauthorized = options.onUnauthorized;
       this._onMaintenance = options.onMaintenance;
+      this._onTokensChanged = options.onTokensChanged;
       this._apiKey = options.apiKey || null;
       if (this.browserMode && !this._apiKey) {
         this._loadTokens();
@@ -11087,6 +11324,7 @@
       this.credits = createCreditsMethods(this);
       this.scratch = createScratchMethods(this);
       this.token = createTokenMethods(this);
+      this.oauthGrant = createOAuthGrantMethods(this);
       this.webhook = createWebhookMethods(this);
       this.supportTicket = createSupportTicketMethods(this);
     }
@@ -11326,6 +11564,39 @@
           console.error("Failed to save tokens to localStorage:", e);
         }
       }
+      if (this._onTokensChanged) {
+        try {
+          this._onTokensChanged(accessToken || refreshToken ? this.getSession() : null);
+        } catch (e) {
+          console.error("onTokensChanged handler threw:", e);
+        }
+      }
+    }
+    /**
+     * Returns the current session (tokens and expiries), or null when signed out.
+     * @public
+     */
+    getSession() {
+      if (!this._accessToken && !this._refreshTokenValue) return null;
+      return {
+        accessToken: this._accessToken,
+        refreshToken: this._refreshTokenValue,
+        accessTokenExpiry: this._accessTokenExpiry,
+        refreshTokenExpiry: this._refreshTokenExpiry
+      };
+    }
+    /**
+     * Restores a session previously captured through `onTokensChanged` /
+     * `getSession()` — for hosts that persist tokens outside localStorage.
+     * Does not fire `onTokensChanged`. A missing or expired access token is
+     * refreshed on the next authenticated request.
+     * @public
+     */
+    restoreSession(session) {
+      this._accessToken = session?.accessToken ?? null;
+      this._refreshTokenValue = session?.refreshToken ?? null;
+      this._accessTokenExpiry = session?.accessTokenExpiry ?? null;
+      this._refreshTokenExpiry = session?.refreshTokenExpiry ?? null;
     }
     /**
      * Retrieves the current access token.

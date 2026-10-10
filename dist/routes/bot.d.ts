@@ -5,7 +5,7 @@ export interface BotApiKeySummary {
     name: string;
     /** Discriminator. Bot keys mint as 'botAccess'. */
     kind?: 'botAccess' | 'pat' | 'oauthAccess' | 'oauthRefresh' | null;
-    /** Granted action verbs. Empty array = unscoped (legacy). */
+    /** Granted scopes. A bot key is minted with the full registry when none are chosen. */
     scopes?: string[];
     lastUsed?: string | null;
     expiresAt?: string | null;
@@ -45,10 +45,10 @@ export interface CreateBotData {
      *  workspaceAdmin, workspaceMember, workspaceChatMember. */
     roles: Array<'workspaceAdmin' | 'workspaceMember' | 'workspaceChatMember'>;
     /**
-     * Optional API-key scopes. Defaults to [] (legacy — bot key can call
-     * any route that isn't yet scope-gated). Once a route is gated by
-     * `requireTokenScope` the bot needs the matching scope here for that
-     * route to work.
+     * Optional API-key scopes. Omit (or pass an empty array) to mint the key
+     * with the full scope registry, which is what the bot's roles already allow
+     * — every route declares a scope now, so a genuinely empty set would leave
+     * the key unable to call anything. Pass a subset to narrow it.
      */
     scopes?: string[];
 }
@@ -66,6 +66,27 @@ export interface RotateBotKeyResponse {
     apiKey: BotApiKeySummary;
     /** New raw API key. Returned once. */
     rawKey: string;
+}
+export interface CreateBotKeyData {
+    /** Label shown in the bot's key list. */
+    name: string;
+    /** Validated server-side against the token-scope registry. Omit for the full set. */
+    scopes?: string[];
+    /** Optional expiry, ISO 8601. Must be in the future. */
+    expiresAt?: string;
+}
+export interface CreateBotKeyResponse {
+    apiKey: BotApiKeySummary;
+    /** Raw API key. Returned once and not recoverable afterwards. */
+    rawKey: string;
+}
+export interface UpdateBotKeyScopesData {
+    /**
+     * The COMPLETE new scope set, not a delta — the same shape `createBotKey`
+     * takes. At least one scope; a scopeless key authenticates and is then
+     * refused by every gated route, so revoke it instead of emptying it.
+     */
+    scopes: string[];
 }
 export interface UpdateBotAvatarFileData {
     name: string;
@@ -120,8 +141,42 @@ export default function createBotMethods(client: NuramaClient): {
     /**
      * Revoke the bot's current API key and issue a new one.
      * The new raw key is returned once.
+     *
+     * The replacement carries the old key's scopes verbatim, so this is not a
+     * way to pick up scopes added to the registry since the key was minted —
+     * `updateBotKeyScopes` is.
      */
     rotateBotKey(workspaceId: string, botId: string): Promise<RotateBotKeyResponse>;
+    /**
+     * Mint an ADDITIONAL API key for the bot, up to 5 live keys.
+     *
+     * Unlike `rotateBotKey`, the bot's existing keys keep working — which is
+     * what makes a zero-downtime changeover possible: mint, move traffic over,
+     * then revoke the old key. The raw key is returned once.
+     */
+    createBotKey(workspaceId: string, botId: string, keyData: CreateBotKeyData): Promise<CreateBotKeyResponse>;
+    /**
+     * Replace the scopes on one of the bot's API keys, in place.
+     *
+     * A key's scopes are a snapshot taken when it was minted, and the registry
+     * grows — a key created before a scope existed cannot hold it. Rotation is
+     * not a substitute: `rotateBotKey` copies the old scope set onto the
+     * replacement, so a stale key stays stale through every rotation.
+     *
+     * This matters most for keys minted with `scopes` omitted, which means
+     * "the full registry" as it stood that day, not "whatever the full registry
+     * becomes".
+     *
+     * The secret is unchanged — every caller configured with this key keeps
+     * working, which is the whole point. Requires `canManageBots`.
+     */
+    updateBotKeyScopes(workspaceId: string, botId: string, keyId: string, data: UpdateBotKeyScopesData): Promise<BotApiKeySummary>;
+    /**
+     * Revoke one of the bot's API keys, leaving its others working.
+     * A revoked key stops authenticating immediately and frees a slot
+     * against the 5-key cap.
+     */
+    revokeBotKey(workspaceId: string, botId: string, keyId: string): Promise<void>;
     /**
      * Request signed URL data to upload a new avatar for the bot.
      * Caller multipart-uploads the file to S3 using the returned `signedUrlData`,

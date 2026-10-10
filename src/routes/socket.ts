@@ -110,6 +110,33 @@ const LIFECYCLE_LISTENER_EVENTS = new Set([
   'reconnect',
 ]);
 
+/** First reconnect delay; socket.io doubles it per failed attempt, up to RECONNECTION_DELAY_MAX, ±50% jitter. */
+const RECONNECTION_DELAY = 1000;
+const RECONNECTION_DELAY_MAX = 30000;
+
+/**
+ * Extra first-retry delay, up to this, after the SERVER closed the connection ("transport close"): a ws deploy
+ * or restart drops every client of that server at once, and without it they would all reconnect within the
+ * same second. Network drops ("ping timeout", "transport error") keep the normal 1s retry.
+ */
+const SERVER_CLOSE_RECONNECT_SPREAD = 10000;
+
+/**
+ * Spread reconnects after a server-side close (see SERVER_CLOSE_RECONNECT_SPREAD). Sets the manager's next
+ * delay from the socket's 'disconnect', which socket.io emits before it schedules the retry, and restores the
+ * normal delay on 'connect'. Channels share one manager, so the last channel's draw wins, which is fine.
+ */
+const spreadReconnectAfterServerClose = (socket: any): void => {
+  const manager = socket.io;
+  if (typeof manager?.reconnectionDelay !== 'function') return;
+  socket.on('disconnect', (reason: string) => {
+    if (reason === 'transport close') {
+      manager.reconnectionDelay(RECONNECTION_DELAY + Math.random() * SERVER_CLOSE_RECONNECT_SPREAD);
+    }
+  });
+  socket.on('connect', () => manager.reconnectionDelay(RECONNECTION_DELAY));
+};
+
 export default function createSocketMethods(client: NuramaClient) {
   // Track active socket connections
   const activeConnections: Record<string, SocketChannel> = {};
@@ -215,9 +242,12 @@ export default function createSocketMethods(client: NuramaClient) {
 
       // Reconnection configuration for resilience
       reconnection: socketOptions.autoReconnect,
-      reconnectionAttempts: 10,           // Maximum reconnection attempts before giving up
-      reconnectionDelay: 1000,             // Start with 1 second delay
-      reconnectionDelayMax: 30000,         // Max delay of 30 seconds between attempts
+      // Never give up: the server may refuse connections for a while (busy, or a deploy draining), and after a
+      // final failure socket.io stops for good without telling the app (the manager's 'reconnect_failed' never
+      // reaches socket listeners). Retries settle at one every ~30s.
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: RECONNECTION_DELAY,
+      reconnectionDelayMax: RECONNECTION_DELAY_MAX,
       randomizationFactor: 0.5,            // Add jitter to avoid thundering herd problem
 
       // Connection timeout
@@ -244,14 +274,27 @@ export default function createSocketMethods(client: NuramaClient) {
     // handlers across reconnections, so they will fire once connected.
     activeConnections[channel] = socketChannel;
 
+    spreadReconnectAfterServerClose(socket);
+
     // Setup event listeners
     return new Promise((resolve, reject) => {
       let settled = false;
+      let hasConnected = false;
 
       // Handle connection (initial or after reconnection)
       socket.on('connect', () => {
         _log(`Connected to channel: ${channel}`);
         activeConnections[channel] = socketChannel;
+        if (hasConnected) {
+          // A second 'connect' on the same socket is socket.io reconnecting it (the manager emits 'reconnect',
+          // but socket listeners never see that). Notify app-level onReconnect listeners so they can
+          // REST-refetch any gap of server->client messages missed while the transport was down (socket.io has
+          // no replay across a reconnect).
+          _log(`Reconnected to channel ${channel}`);
+          const reconnectListeners = socketChannel.listeners['reconnect'] || new Set();
+          reconnectListeners.forEach(listener => listener({ type: 'reconnect' }));
+        }
+        hasConnected = true;
         if (!settled) {
           settled = true;
           resolve(socketChannel);
@@ -268,23 +311,6 @@ export default function createSocketMethods(client: NuramaClient) {
           settled = true;
           resolve(socketChannel);
         }
-      });
-
-      // Handle reconnection attempts
-      socket.on('reconnect_attempt', (attempt: number) => {
-        _log(`Reconnection attempt ${attempt} for channel: ${channel}`);
-      });
-
-      // Handle successful reconnection
-      socket.on('reconnect', (attempt: number) => {
-        _log(`Reconnected to channel ${channel} after ${attempt} attempts`);
-        // Ensure activeConnections is up to date after reconnect
-        activeConnections[channel] = socketChannel;
-        // Notify app-level onReconnect listeners so they can REST-refetch any
-        // gap of server->client messages missed while the transport was down
-        // (socket.io has no replay across a reconnect).
-        const reconnectListeners = socketChannel.listeners['reconnect'] || new Set();
-        reconnectListeners.forEach(listener => listener({ type: 'reconnect', attempt }));
       });
 
       // Handle reconnection failure — only reject when socket.io gives up entirely
@@ -423,9 +449,9 @@ export default function createSocketMethods(client: NuramaClient) {
 
       // Reconnection configuration for resilience
       reconnection: socketOptions.autoReconnect,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 30000,
+      reconnectionAttempts: Infinity,      // as connect(): never give up silently
+      reconnectionDelay: RECONNECTION_DELAY,
+      reconnectionDelayMax: RECONNECTION_DELAY_MAX,
       randomizationFactor: 0.5,
 
       // Connection timeout
@@ -446,6 +472,8 @@ export default function createSocketMethods(client: NuramaClient) {
       listeners: {},
     };
 
+    spreadReconnectAfterServerClose(socket);
+
     // Setup event listeners
     return new Promise((resolve, reject) => {
       // Handle connection
@@ -459,16 +487,6 @@ export default function createSocketMethods(client: NuramaClient) {
       socket.on('connect_error', (error: unknown) => {
         _log(`Connection error for public channel ${channel}:`, error);
         reject(error);
-      });
-
-      // Handle reconnection attempts
-      socket.on('reconnect_attempt', (attempt: number) => {
-        _log(`Reconnection attempt ${attempt} for public channel: ${channel}`);
-      });
-
-      // Handle successful reconnection
-      socket.on('reconnect', (attempt: number) => {
-        _log(`Reconnected to public channel ${channel} after ${attempt} attempts`);
       });
 
       // Handle reconnection failure

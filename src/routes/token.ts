@@ -22,7 +22,14 @@ export type TokenScope =
   | 'assets:read'
   | 'assets:write'
   | 'projects:read'
-  | 'workspaces:read';
+  | 'projects:write'
+  | 'workspaces:read'
+  | 'workspaces:write'
+  | 'convos:read'
+  | 'convos:write'
+  | 'notifications:read'
+  | 'notifications:write'
+  | 'ai:use';
 
 /**
  * The shape returned by `listTokens` and (without the `token` field)
@@ -48,6 +55,16 @@ export interface CreateTokenData {
   scopes: TokenScope[];
   /** Optional ISO date. Null / omitted = non-expiring. */
   expiresAt?: string | null;
+}
+
+export interface UpdateTokenScopesData {
+  /**
+   * The COMPLETE new scope set, not a delta — the same shape
+   * `createToken` takes, so what a token may do is always stated in
+   * full rather than accumulated through edits nobody can review.
+   * At least one scope.
+   */
+  scopes: TokenScope[];
 }
 
 export interface CreateTokenResponse extends TokenSummary {
@@ -94,6 +111,28 @@ export default function createTokenMethods(client: NuramaClient) {
         endpoint: '/v1/tokens',
         sendJWT: true,
         bypassCache: true,
+      });
+    },
+
+    /**
+     * Replace the scopes on one of the caller's Personal Access Tokens.
+     *
+     * `scopes` is the complete new set, not a delta. This exists because
+     * the scope registry grows over time: a token minted before a scope
+     * existed cannot hold it, and without this the only remedy is minting
+     * a replacement and reconfiguring everywhere the old one is used.
+     *
+     * The change takes effect on the token's very next request. Scopes
+     * remain a ceiling, never a floor — widening a token never lets it do
+     * anything its owner cannot already do.
+     */
+    async updateTokenScopes(tokenId: string, data: UpdateTokenScopesData): Promise<TokenSummary> {
+      if (!tokenId) throw new Error('tokenId is required.');
+      return client._request<TokenSummary>({
+        method: 'PATCH',
+        endpoint: `/v1/tokens/${tokenId}`,
+        body: data,
+        sendJWT: true,
       });
     },
 

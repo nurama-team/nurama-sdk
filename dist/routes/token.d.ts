@@ -12,7 +12,7 @@ export type TokenKind = 'pat' | 'oauthAccess' | 'oauthRefresh' | 'botAccess';
  * adding it here too (or callers fall back to `string` when they
  * accept arbitrary scopes from configuration).
  */
-export type TokenScope = 'chat:read' | 'chat:write' | 'tasks:read' | 'tasks:write' | 'assets:read' | 'assets:write' | 'projects:read' | 'workspaces:read';
+export type TokenScope = 'chat:read' | 'chat:write' | 'tasks:read' | 'tasks:write' | 'assets:read' | 'assets:write' | 'projects:read' | 'projects:write' | 'workspaces:read' | 'workspaces:write' | 'convos:read' | 'convos:write' | 'notifications:read' | 'notifications:write' | 'ai:use';
 /**
  * The shape returned by `listTokens` and (without the `token` field)
  * the metadata half of `createToken`. Never includes the raw secret —
@@ -36,6 +36,15 @@ export interface CreateTokenData {
     scopes: TokenScope[];
     /** Optional ISO date. Null / omitted = non-expiring. */
     expiresAt?: string | null;
+}
+export interface UpdateTokenScopesData {
+    /**
+     * The COMPLETE new scope set, not a delta — the same shape
+     * `createToken` takes, so what a token may do is always stated in
+     * full rather than accumulated through edits nobody can review.
+     * At least one scope.
+     */
+    scopes: TokenScope[];
 }
 export interface CreateTokenResponse extends TokenSummary {
     /**
@@ -66,6 +75,19 @@ export default function createTokenMethods(client: NuramaClient): {
      * management screens instead.
      */
     listTokens(): Promise<TokenSummary[]>;
+    /**
+     * Replace the scopes on one of the caller's Personal Access Tokens.
+     *
+     * `scopes` is the complete new set, not a delta. This exists because
+     * the scope registry grows over time: a token minted before a scope
+     * existed cannot hold it, and without this the only remedy is minting
+     * a replacement and reconfiguring everywhere the old one is used.
+     *
+     * The change takes effect on the token's very next request. Scopes
+     * remain a ceiling, never a floor — widening a token never lets it do
+     * anything its owner cannot already do.
+     */
+    updateTokenScopes(tokenId: string, data: UpdateTokenScopesData): Promise<TokenSummary>;
     /**
      * Revoke one of the caller's Personal Access Tokens. The revocation
      * is immediate — the token will return 401 on the very next request.

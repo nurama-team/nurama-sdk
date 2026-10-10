@@ -36,6 +36,7 @@ import createBlogPostsMethods from './routes/blogPosts.js';
 import createCreditsMethods from './routes/credits.js';
 import createScratchMethods from './routes/scratch.js';
 import createTokenMethods from './routes/token.js';
+import createOAuthGrantMethods from './routes/oauthGrant.js';
 import createWebhookMethods from './routes/webhook.js';
 import createSupportTicketMethods from './routes/supportTicket.js';
 import { SDK_VERSION, type SDKVersionInfo } from './version.js';
@@ -101,10 +102,26 @@ export interface NuramaClientOptions {
   onMaintenance?: () => void;
 
   /**
+   * Invoked whenever the client's tokens change (login, MFA completion, refresh,
+   * logout, or a failed refresh clearing the session). Lets non-browser hosts
+   * (e.g. React Native) persist the session in their own secure storage; pair
+   * with `restoreSession()` on startup. Not called by `restoreSession()` itself.
+   */
+  onTokensChanged?: (session: NuramaSession | null) => void;
+
+  /**
    * Long-lived API key to use for every request (e.g., a bot API key starting with `nrm_bot_`).
    * When set, the client skips JWT refresh logic and uses the key as the bearer token.
    */
   apiKey?: string;
+}
+
+/** A persisted session: the token pair plus their ISO expiry timestamps. */
+export interface NuramaSession {
+  accessToken: string | null;
+  refreshToken: string | null;
+  accessTokenExpiry: string | null;
+  refreshTokenExpiry: string | null;
 }
 
 interface RequestParams {
@@ -199,6 +216,7 @@ type BlogPostsMethods = ReturnType<typeof createBlogPostsMethods>;
 type CreditsMethods = ReturnType<typeof createCreditsMethods>;
 type ScratchMethods = ReturnType<typeof createScratchMethods>;
 type TokenMethods = ReturnType<typeof createTokenMethods>;
+type OAuthGrantMethods = ReturnType<typeof createOAuthGrantMethods>;
 type WebhookMethods = ReturnType<typeof createWebhookMethods>;
 type SupportTicketMethods = ReturnType<typeof createSupportTicketMethods>;
 
@@ -223,6 +241,7 @@ class NuramaClient {
   readonly invalidateCacheOnMutation: boolean;
   private readonly _onUnauthorized?: (reason?: { type?: string }) => void;
   private readonly _onMaintenance?: () => void;
+  private readonly _onTokensChanged?: (session: NuramaSession | null) => void;
 
   private _accessToken: string | null = null;
   private _refreshTokenValue: string | null = null;
@@ -273,6 +292,9 @@ class NuramaClient {
   public credits: CreditsMethods;
   public scratch: ScratchMethods;
   public token: TokenMethods;
+
+  /** Connected applications: what the user has authorised over OAuth. */
+  public oauthGrant: OAuthGrantMethods;
   public webhook: WebhookMethods;
   public supportTicket: SupportTicketMethods;
 
@@ -325,6 +347,7 @@ class NuramaClient {
     this.invalidateCacheOnMutation = options.invalidateCacheOnMutation === undefined ? true : options.invalidateCacheOnMutation;
     this._onUnauthorized = options.onUnauthorized;
     this._onMaintenance = options.onMaintenance;
+    this._onTokensChanged = options.onTokensChanged;
     this._apiKey = options.apiKey || null;
 
     if (this.browserMode && !this._apiKey) {
@@ -367,6 +390,7 @@ class NuramaClient {
     this.credits = createCreditsMethods(this);
     this.scratch = createScratchMethods(this);
     this.token = createTokenMethods(this);
+    this.oauthGrant = createOAuthGrantMethods(this);
     this.webhook = createWebhookMethods(this);
     this.supportTicket = createSupportTicketMethods(this);
   }
@@ -642,6 +666,42 @@ class NuramaClient {
         console.error('Failed to save tokens to localStorage:', e);
       }
     }
+
+    if (this._onTokensChanged) {
+      try {
+        this._onTokensChanged(accessToken || refreshToken ? this.getSession() : null);
+      } catch (e) {
+        console.error('onTokensChanged handler threw:', e);
+      }
+    }
+  }
+
+  /**
+   * Returns the current session (tokens and expiries), or null when signed out.
+   * @public
+   */
+  public getSession(): NuramaSession | null {
+    if (!this._accessToken && !this._refreshTokenValue) return null;
+    return {
+      accessToken: this._accessToken,
+      refreshToken: this._refreshTokenValue,
+      accessTokenExpiry: this._accessTokenExpiry,
+      refreshTokenExpiry: this._refreshTokenExpiry,
+    };
+  }
+
+  /**
+   * Restores a session previously captured through `onTokensChanged` /
+   * `getSession()` — for hosts that persist tokens outside localStorage.
+   * Does not fire `onTokensChanged`. A missing or expired access token is
+   * refreshed on the next authenticated request.
+   * @public
+   */
+  public restoreSession(session: NuramaSession | null): void {
+    this._accessToken = session?.accessToken ?? null;
+    this._refreshTokenValue = session?.refreshToken ?? null;
+    this._accessTokenExpiry = session?.accessTokenExpiry ?? null;
+    this._refreshTokenExpiry = session?.refreshTokenExpiry ?? null;
   }
 
   /**

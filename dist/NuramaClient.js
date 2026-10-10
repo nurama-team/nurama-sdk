@@ -35,6 +35,7 @@ import createBlogPostsMethods from './routes/blogPosts.js';
 import createCreditsMethods from './routes/credits.js';
 import createScratchMethods from './routes/scratch.js';
 import createTokenMethods from './routes/token.js';
+import createOAuthGrantMethods from './routes/oauthGrant.js';
 import createWebhookMethods from './routes/webhook.js';
 import createSupportTicketMethods from './routes/supportTicket.js';
 import { SDK_VERSION } from './version.js';
@@ -103,6 +104,7 @@ class NuramaClient {
         this.invalidateCacheOnMutation = options.invalidateCacheOnMutation === undefined ? true : options.invalidateCacheOnMutation;
         this._onUnauthorized = options.onUnauthorized;
         this._onMaintenance = options.onMaintenance;
+        this._onTokensChanged = options.onTokensChanged;
         this._apiKey = options.apiKey || null;
         if (this.browserMode && !this._apiKey) {
             this._loadTokens();
@@ -143,6 +145,7 @@ class NuramaClient {
         this.credits = createCreditsMethods(this);
         this.scratch = createScratchMethods(this);
         this.token = createTokenMethods(this);
+        this.oauthGrant = createOAuthGrantMethods(this);
         this.webhook = createWebhookMethods(this);
         this.supportTicket = createSupportTicketMethods(this);
     }
@@ -403,6 +406,41 @@ class NuramaClient {
                 console.error('Failed to save tokens to localStorage:', e);
             }
         }
+        if (this._onTokensChanged) {
+            try {
+                this._onTokensChanged(accessToken || refreshToken ? this.getSession() : null);
+            }
+            catch (e) {
+                console.error('onTokensChanged handler threw:', e);
+            }
+        }
+    }
+    /**
+     * Returns the current session (tokens and expiries), or null when signed out.
+     * @public
+     */
+    getSession() {
+        if (!this._accessToken && !this._refreshTokenValue)
+            return null;
+        return {
+            accessToken: this._accessToken,
+            refreshToken: this._refreshTokenValue,
+            accessTokenExpiry: this._accessTokenExpiry,
+            refreshTokenExpiry: this._refreshTokenExpiry,
+        };
+    }
+    /**
+     * Restores a session previously captured through `onTokensChanged` /
+     * `getSession()` — for hosts that persist tokens outside localStorage.
+     * Does not fire `onTokensChanged`. A missing or expired access token is
+     * refreshed on the next authenticated request.
+     * @public
+     */
+    restoreSession(session) {
+        this._accessToken = session?.accessToken ?? null;
+        this._refreshTokenValue = session?.refreshToken ?? null;
+        this._accessTokenExpiry = session?.accessTokenExpiry ?? null;
+        this._refreshTokenExpiry = session?.refreshTokenExpiry ?? null;
     }
     /**
      * Retrieves the current access token.
