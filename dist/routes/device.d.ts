@@ -1,5 +1,5 @@
 import NuramaClient from '../NuramaClient.js';
-import { type Device, type RegisterDeviceBody, type UpdateDeviceBody, type GetUserDevicesQuery } from '@nurama/types';
+import { type Device, type RegisterDeviceBody, type UpdateDeviceBody, type GetUserDevicesQuery, type LiveActivityRegistration, type RegisterLiveActivityBody } from '@nurama/types';
 /**
  * Defines device-related methods for the NuramaClient.
  * Handles device registration and management for push notifications.
@@ -70,5 +70,20 @@ export default function createDeviceMethods(client: NuramaClient): {
      * await client.device.deleteDevice('507f1f77bcf86cd799439011');
      */
     deleteDevice(deviceId: string): Promise<void>;
+    /**
+     * Register or refresh an iOS upload Live Activity, so the API carries it on by push through post-processing
+     * while the app is suspended. Send the activity's push token and the app's view of the batch; send it again
+     * as the batch changes. Requires authentication.
+     * @param {string} activityId - ActivityKit's id for the activity.
+     * @param {RegisterLiveActivityBody} body - Push token, APNs environment and the batch's files.
+     * @returns {Promise<LiveActivityRegistration>} The activity id and the batch's stage.
+     */
+    registerLiveActivity(activityId: string, body: RegisterLiveActivityBody): Promise<LiveActivityRegistration>;
+    /**
+     * Stop following an upload Live Activity (the app ended it). Requires authentication.
+     * @param {string} activityId - ActivityKit's id for the activity.
+     * @returns {Promise<void>}
+     */
+    endLiveActivity(activityId: string): Promise<void>;
 };
 //# sourceMappingURL=device.d.ts.map

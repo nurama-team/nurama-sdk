@@ -117,6 +117,40 @@ export default function createDeviceMethods(client) {
                 sendJWT: true,
             });
         },
+        /**
+         * Register or refresh an iOS upload Live Activity, so the API carries it on by push through post-processing
+         * while the app is suspended. Send the activity's push token and the app's view of the batch; send it again
+         * as the batch changes. Requires authentication.
+         * @param {string} activityId - ActivityKit's id for the activity.
+         * @param {RegisterLiveActivityBody} body - Push token, APNs environment and the batch's files.
+         * @returns {Promise<LiveActivityRegistration>} The activity id and the batch's stage.
+         */
+        async registerLiveActivity(activityId, body) {
+            if (!activityId) {
+                throw new Error('activityId is required.');
+            }
+            return client._request({
+                method: 'PUT',
+                endpoint: `/v1/devices/live-activities/${activityId}`,
+                body,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Stop following an upload Live Activity (the app ended it). Requires authentication.
+         * @param {string} activityId - ActivityKit's id for the activity.
+         * @returns {Promise<void>}
+         */
+        async endLiveActivity(activityId) {
+            if (!activityId) {
+                throw new Error('activityId is required.');
+            }
+            return client._request({
+                method: 'DELETE',
+                endpoint: `/v1/devices/live-activities/${activityId}`,
+                sendJWT: true,
+            });
+        },
     };
 }
 //# sourceMappingURL=device.js.map

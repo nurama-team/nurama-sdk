@@ -98,3 +98,35 @@ export interface GetUserDevicesQuery {
     /** Filter by device type */
     deviceType?: DeviceType;
 }
+/** A file in an upload Live Activity's batch, as the app sees it (the API carries it on through processing). */
+export interface LiveActivityFile {
+    /** The app's id for the file in its upload queue. */
+    key: string;
+    /** The asset, once the API has created it. */
+    assetId?: string | null;
+    kind: 'image' | 'video' | 'file';
+    size: number;
+    state: 'uploading' | 'processing' | 'ready' | 'failed';
+    /** 0–1 through the current state: bytes sent, or the processing percent. */
+    progress: number;
+}
+/**
+ * Register or refresh an upload Live Activity
+ */
+export interface RegisterLiveActivityBody {
+    /** The caller's registered iOS device the activity runs on (from `registerDevice`). */
+    deviceId: string;
+    /** The activity's own APNs push token (hex). */
+    pushToken: string;
+    /** App bundle id; the push topic is `<bundleId>.push-type.liveactivity`. */
+    bundleId: string;
+    /** The APNs environment the app's build receives pushes from. */
+    apnsEnvironment: 'production' | 'development';
+    /** Where the batch is going, as the activity shows it. */
+    destination?: string;
+    files: LiveActivityFile[];
+}
+export interface LiveActivityRegistration {
+    id: string;
+    stage: 'uploading' | 'processing' | 'done';
+}
