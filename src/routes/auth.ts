@@ -9,6 +9,10 @@ import {
   type LinkedAuthProvider,
   type OAuthExchangeRequest,
   type OAuthExchangeResponse,
+  type Passkey,
+  type PasskeyRegistrationProof,
+  type PasskeyCredentialOptions,
+  type PasskeyCredentialResponse,
 } from '@nurama/types';
 
 // Define specific types for auth requests
@@ -466,6 +470,110 @@ export default function createAuthMethods(client: NuramaClient) {
         sendJWT: true,
       });
       return result;
+    },
+
+    /**
+     * Gets the options for the browser's passkey sign-in prompt. Pass them to the WebAuthn library
+     * (`startAuthentication` in @simplewebauthn/browser), then send its result to `loginWithPasskey`.
+     * @returns Promise resolving to WebAuthn request options.
+     */
+    async getPasskeyLoginOptions(): Promise<PasskeyCredentialOptions> {
+      return client._request<PasskeyCredentialOptions>({
+        endpoint: "/v1/auth/passkeys/login-options",
+        method: "POST",
+        sendJWT: false,
+      });
+    },
+
+    /**
+     * Signs in with the browser's response to the passkey prompt and stores the tokens.
+     * A passkey stands in for two-factor, so this never returns an MFA challenge.
+     * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+     * @returns Promise resolving to the user and tokens.
+     */
+    async loginWithPasskey(credential: PasskeyCredentialResponse): Promise<LoginRegisterResponse> {
+      const result: LoginRegisterResponse = await client._request({
+        endpoint: "/v1/auth/passkeys/login",
+        method: "POST",
+        body: { credential },
+        sendJWT: false,
+      });
+      (client as any)._setTokens(
+        result.tokens.access.token,
+        result.tokens.refresh.token,
+        result.tokens.access.expires,
+        result.tokens.refresh.expires
+      );
+      return result;
+    },
+
+    /**
+     * Gets the options for the browser's "create a passkey" prompt, after confirming who is asking.
+     * @param proof - The password when the account has one, and a two-factor code when two-factor is on.
+     * @returns Promise resolving to WebAuthn creation options.
+     */
+    async getPasskeyRegistrationOptions(proof: PasskeyRegistrationProof = {}): Promise<PasskeyCredentialOptions> {
+      return client._request<PasskeyCredentialOptions>({
+        endpoint: "/v1/auth/passkeys/registration-options",
+        method: "POST",
+        body: proof,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Saves the passkey the browser created.
+     * @param credential - The WebAuthn library's RegistrationResponseJSON.
+     * @param name - Optional name to tell it apart, e.g. "MacBook".
+     * @returns Promise resolving to the saved passkey.
+     */
+    async registerPasskey(credential: PasskeyCredentialResponse, name?: string): Promise<Passkey> {
+      return client._request<Passkey>({
+        endpoint: "/v1/auth/passkeys",
+        method: "POST",
+        body: { credential, ...(name ? { name } : {}) },
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Lists the authenticated user's passkeys, oldest first.
+     * @returns Promise resolving to the user's passkeys.
+     */
+    async listPasskeys(): Promise<Passkey[]> {
+      return client._request<Passkey[]>({
+        endpoint: "/v1/auth/passkeys",
+        method: "GET",
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Renames one of the authenticated user's passkeys.
+     * @param passkeyId - The passkey's id.
+     * @param name - The new name.
+     * @returns Promise resolving to the renamed passkey.
+     */
+    async renamePasskey(passkeyId: string, name: string): Promise<Passkey> {
+      return client._request<Passkey>({
+        endpoint: `/v1/auth/passkeys/${passkeyId}`,
+        method: "PATCH",
+        body: { name },
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Removes one of the authenticated user's passkeys.
+     * @param passkeyId - The passkey's id.
+     * @returns Promise resolving when complete.
+     */
+    async deletePasskey(passkeyId: string): Promise<void> {
+      await client._request<void>({
+        endpoint: `/v1/auth/passkeys/${passkeyId}`,
+        method: "DELETE",
+        sendJWT: true,
+      });
     },
 
     /**

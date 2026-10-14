@@ -142,6 +142,42 @@ export interface User {
     updatedAt?: number;
 }
 /**
+ * A passkey saved to the user's account. The key itself never leaves the user's device or password manager.
+ */
+export interface Passkey {
+    id: string;
+    /** A name to tell it apart, e.g. "MacBook" */
+    name: string;
+    /** `multiDevice` passkeys sync between devices (iCloud Keychain, Google Password Manager, 1Password) */
+    deviceType: 'singleDevice' | 'multiDevice';
+    backedUp: boolean;
+    transports: string[];
+    createdAt: string;
+    lastUsedAt: string | null;
+}
+/**
+ * What adding a passkey asks for: the password when the account has one, and a two-factor code when two-factor is
+ * on. An account with neither sends nothing.
+ */
+export interface PasskeyRegistrationProof {
+    password?: string;
+    mfaToken?: string;
+}
+/**
+ * WebAuthn options for the browser's passkey prompt (PublicKeyCredentialCreationOptionsJSON or
+ * PublicKeyCredentialRequestOptionsJSON). Passed straight to the WebAuthn library, so kept opaque here.
+ */
+export type PasskeyCredentialOptions = Record<string, unknown> & {
+    challenge: string;
+};
+/**
+ * The browser's response to a passkey prompt (RegistrationResponseJSON or AuthenticationResponseJSON), as the
+ * WebAuthn library returns it.
+ */
+export type PasskeyCredentialResponse = Record<string, unknown> & {
+    id: string;
+};
+/**
  * OAuth platform types
  */
 export type OAuthPlatform = 'web' | 'mobile' | 'desktop';

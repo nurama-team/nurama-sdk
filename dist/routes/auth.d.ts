@@ -1,5 +1,5 @@
 import NuramaClient from "../NuramaClient.js";
-import { type User, type AuthTokens, type MFAEnableResponse, type MFAVerifyResponse, type OAuthProvider, type LinkedAuthProvider, type OAuthExchangeResponse } from '@nurama/types';
+import { type User, type AuthTokens, type MFAEnableResponse, type MFAVerifyResponse, type OAuthProvider, type LinkedAuthProvider, type OAuthExchangeResponse, type Passkey, type PasskeyRegistrationProof, type PasskeyCredentialOptions, type PasskeyCredentialResponse } from '@nurama/types';
 export interface RegisterUserData extends Pick<User, "firstName" | "lastName" | "email"> {
     password: string;
 }
@@ -161,6 +161,50 @@ export default function createAuthMethods(client: NuramaClient): {
      * @returns Promise resolving to user data with updated linked providers.
      */
     linkOAuthProvider(provider: OAuthProvider): Promise<LoginRegisterResponse>;
+    /**
+     * Gets the options for the browser's passkey sign-in prompt. Pass them to the WebAuthn library
+     * (`startAuthentication` in @simplewebauthn/browser), then send its result to `loginWithPasskey`.
+     * @returns Promise resolving to WebAuthn request options.
+     */
+    getPasskeyLoginOptions(): Promise<PasskeyCredentialOptions>;
+    /**
+     * Signs in with the browser's response to the passkey prompt and stores the tokens.
+     * A passkey stands in for two-factor, so this never returns an MFA challenge.
+     * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+     * @returns Promise resolving to the user and tokens.
+     */
+    loginWithPasskey(credential: PasskeyCredentialResponse): Promise<LoginRegisterResponse>;
+    /**
+     * Gets the options for the browser's "create a passkey" prompt, after confirming who is asking.
+     * @param proof - The password when the account has one, and a two-factor code when two-factor is on.
+     * @returns Promise resolving to WebAuthn creation options.
+     */
+    getPasskeyRegistrationOptions(proof?: PasskeyRegistrationProof): Promise<PasskeyCredentialOptions>;
+    /**
+     * Saves the passkey the browser created.
+     * @param credential - The WebAuthn library's RegistrationResponseJSON.
+     * @param name - Optional name to tell it apart, e.g. "MacBook".
+     * @returns Promise resolving to the saved passkey.
+     */
+    registerPasskey(credential: PasskeyCredentialResponse, name?: string): Promise<Passkey>;
+    /**
+     * Lists the authenticated user's passkeys, oldest first.
+     * @returns Promise resolving to the user's passkeys.
+     */
+    listPasskeys(): Promise<Passkey[]>;
+    /**
+     * Renames one of the authenticated user's passkeys.
+     * @param passkeyId - The passkey's id.
+     * @param name - The new name.
+     * @returns Promise resolving to the renamed passkey.
+     */
+    renamePasskey(passkeyId: string, name: string): Promise<Passkey>;
+    /**
+     * Removes one of the authenticated user's passkeys.
+     * @param passkeyId - The passkey's id.
+     * @returns Promise resolving when complete.
+     */
+    deletePasskey(passkeyId: string): Promise<void>;
     /**
      * Unlinks an OAuth provider from the authenticated user's account.
      * User must have at least one authentication method remaining (password or another OAuth provider).
