@@ -47,6 +47,8 @@ __exportStar(require("./scratch"), exports);
 __exportStar(require("./ai-revision"), exports);
 __exportStar(require("./search"), exports);
 __exportStar(require("./feed-event"), exports);
+__exportStar(require("./read-state"), exports);
+__exportStar(require("./user-feed"), exports);
 // Utility/Helper types
 __exportStar(require("./pagination"), exports);
 __exportStar(require("./misc"), exports);

@@ -1,5 +1,5 @@
 import NuramaClient from "../NuramaClient.js";
-import { type User, type AuthTokens, type MFAEnableResponse, type MFAVerifyResponse, type OAuthProvider, type LinkedAuthProvider, type OAuthExchangeResponse, type Passkey, type PasskeyRegistrationProof, type PasskeyCredentialOptions, type PasskeyCredentialResponse } from '@nurama/types';
+import { type User, type AuthTokens, type MFAEnableResponse, type MFAVerifyResponse, type OAuthProvider, type LinkedAuthProvider, type OAuthExchangeResponse, type Passkey, type PasskeyRegistrationProof, type PasskeyCredentialOptions, type PasskeyCredentialResponse, type PasskeyDesktopLoginRequest, type PasskeyDesktopLoginResponse } from '@nurama/types';
 export interface RegisterUserData extends Pick<User, "firstName" | "lastName" | "email"> {
     password: string;
 }
@@ -164,16 +164,27 @@ export default function createAuthMethods(client: NuramaClient): {
     /**
      * Gets the options for the browser's passkey sign-in prompt. Pass them to the WebAuthn library
      * (`startAuthentication` in @simplewebauthn/browser), then send its result to `loginWithPasskey`.
+     * @param origin - The web origin to sign in for, from a native app (which has no browser `Origin`); pass the
+     *   same one to `loginWithPasskey`. Browsers send their own and ignore this.
      * @returns Promise resolving to WebAuthn request options.
      */
-    getPasskeyLoginOptions(): Promise<PasskeyCredentialOptions>;
+    getPasskeyLoginOptions(origin?: string): Promise<PasskeyCredentialOptions>;
     /**
      * Signs in with the browser's response to the passkey prompt and stores the tokens.
      * A passkey stands in for two-factor, so this never returns an MFA challenge.
      * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+     * @param origin - From a native app: the origin passed to `getPasskeyLoginOptions`.
      * @returns Promise resolving to the user and tokens.
      */
-    loginWithPasskey(credential: PasskeyCredentialResponse): Promise<LoginRegisterResponse>;
+    loginWithPasskey(credential: PasskeyCredentialResponse, origin?: string): Promise<LoginRegisterResponse>;
+    /**
+     * Signs the desktop app in with a passkey, from the browser. Stores nothing: the tokens wait behind the
+     * returned one-time code, which the desktop app redeems with `exchangeOAuthCode(code, { codeVerifier })`.
+     * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+     * @param handoff - The `state` and PKCE `codeChallenge` the desktop app made.
+     * @returns Promise resolving to the one-time code.
+     */
+    loginDesktopWithPasskey(credential: PasskeyCredentialResponse, handoff: Omit<PasskeyDesktopLoginRequest, "credential">): Promise<PasskeyDesktopLoginResponse>;
     /**
      * Gets the options for the browser's "create a passkey" prompt, after confirming who is asking.
      * @param proof - The password when the account has one, and a two-factor code when two-factor is on.
@@ -257,6 +268,14 @@ export default function createAuthMethods(client: NuramaClient): {
     }): Promise<{
         user: User;
     }>;
-    exchangeOAuthCode(code: string): Promise<OAuthExchangeResponse>;
+    /**
+     * Exchanges a one-time sign-in code for tokens and stores them.
+     * @param code - The code from the sign-in redirect.
+     * @param options.codeVerifier - The PKCE verifier, for a code made with a challenge.
+     * @returns Promise resolving to the user and tokens, or a two-factor challenge.
+     */
+    exchangeOAuthCode(code: string, { codeVerifier }?: {
+        codeVerifier?: string;
+    }): Promise<OAuthExchangeResponse>;
 };
 //# sourceMappingURL=auth.d.ts.map

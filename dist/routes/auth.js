@@ -353,30 +353,50 @@ export default function createAuthMethods(client) {
         /**
          * Gets the options for the browser's passkey sign-in prompt. Pass them to the WebAuthn library
          * (`startAuthentication` in @simplewebauthn/browser), then send its result to `loginWithPasskey`.
+         * @param origin - The web origin to sign in for, from a native app (which has no browser `Origin`); pass the
+         *   same one to `loginWithPasskey`. Browsers send their own and ignore this.
          * @returns Promise resolving to WebAuthn request options.
          */
-        async getPasskeyLoginOptions() {
+        async getPasskeyLoginOptions(origin) {
             return client._request({
                 endpoint: "/v1/auth/passkeys/login-options",
                 method: "POST",
                 sendJWT: false,
+                ...(origin ? { customHeaders: { Origin: origin } } : {}),
             });
         },
         /**
          * Signs in with the browser's response to the passkey prompt and stores the tokens.
          * A passkey stands in for two-factor, so this never returns an MFA challenge.
          * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+         * @param origin - From a native app: the origin passed to `getPasskeyLoginOptions`.
          * @returns Promise resolving to the user and tokens.
          */
-        async loginWithPasskey(credential) {
+        async loginWithPasskey(credential, origin) {
             const result = await client._request({
                 endpoint: "/v1/auth/passkeys/login",
                 method: "POST",
                 body: { credential },
                 sendJWT: false,
+                ...(origin ? { customHeaders: { Origin: origin } } : {}),
             });
             client._setTokens(result.tokens.access.token, result.tokens.refresh.token, result.tokens.access.expires, result.tokens.refresh.expires);
             return result;
+        },
+        /**
+         * Signs the desktop app in with a passkey, from the browser. Stores nothing: the tokens wait behind the
+         * returned one-time code, which the desktop app redeems with `exchangeOAuthCode(code, { codeVerifier })`.
+         * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+         * @param handoff - The `state` and PKCE `codeChallenge` the desktop app made.
+         * @returns Promise resolving to the one-time code.
+         */
+        async loginDesktopWithPasskey(credential, handoff) {
+            return client._request({
+                endpoint: "/v1/auth/passkeys/desktop-login",
+                method: "POST",
+                body: { credential, ...handoff },
+                sendJWT: false,
+            });
         },
         /**
          * Gets the options for the browser's "create a passkey" prompt, after confirming who is asking.
@@ -517,11 +537,17 @@ export default function createAuthMethods(client) {
                 sendJWT: true,
             });
         },
-        async exchangeOAuthCode(code) {
+        /**
+         * Exchanges a one-time sign-in code for tokens and stores them.
+         * @param code - The code from the sign-in redirect.
+         * @param options.codeVerifier - The PKCE verifier, for a code made with a challenge.
+         * @returns Promise resolving to the user and tokens, or a two-factor challenge.
+         */
+        async exchangeOAuthCode(code, { codeVerifier } = {}) {
             const result = await client._request({
                 endpoint: "/v1/auth/oauth/exchange",
                 method: "POST",
-                body: { code },
+                body: { code, ...(codeVerifier ? { codeVerifier } : {}) },
                 sendJWT: false, // No authentication needed - the code is the proof
             });
             // Store tokens upon successful exchange

@@ -8,7 +8,7 @@ import { CursorPaginatedResult } from './pagination';
  * Every card is self-contained: `data` carries everything it renders, so a
  * page of the feed needs no further lookups.
  */
-export type FeedEventKind = 'upload' | 'assetChat' | 'publish' | 'submission' | 'public' | 'member' | 'task';
+export type FeedEventKind = 'upload' | 'assetChat' | 'projectChat' | 'publish' | 'submission' | 'public' | 'member' | 'task';
 export type FeedVisibility = 'creator' | 'reviewer';
 /** The slice of an asset a card draws: name, type and thumbnail files. */
 export interface FeedEventAssetPreview {
@@ -46,6 +46,21 @@ export interface FeedEventGroupData {
 export interface FeedEventAssetChatData {
     asset: FeedEventAssetPreview;
     chatId: ObjectId;
+    participants: PublicUser[];
+    participantCount: number;
+    /** Oldest → newest, at most five. */
+    recentMessages: FeedEventChatMessage[];
+    messageCount: number;
+}
+/**
+ * `data` for project-chat cards. The same shape as an asset chat's minus the
+ * asset: the project's own chat is about the project, not about any one thing
+ * in it.
+ */
+export interface FeedEventProjectChatData {
+    chatId: ObjectId;
+    /** The chat's own subject, where it has been given one. */
+    chatSubject: string | null;
     participants: PublicUser[];
     participantCount: number;
     /** Oldest → newest, at most five. */
@@ -133,6 +148,9 @@ export type FeedEvent = (FeedEventBase & {
 }) | (FeedEventBase & {
     kind: 'assetChat';
     data: FeedEventAssetChatData;
+}) | (FeedEventBase & {
+    kind: 'projectChat';
+    data: FeedEventProjectChatData;
 }) | (FeedEventBase & {
     kind: 'submission';
     data: FeedEventSubmissionData;

@@ -29,6 +29,8 @@ export * from './scratch';
 export * from './ai-revision';
 export * from './search';
 export * from './feed-event';
+export * from './read-state';
+export * from './user-feed';
 export * from './pagination';
 export * from './misc';
 export * from './config';

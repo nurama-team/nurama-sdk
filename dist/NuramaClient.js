@@ -20,6 +20,7 @@ import createTaskMethods from './routes/task.js';
 import createVersionMethods from './routes/version.js';
 import createConfigMethods from './routes/config.js';
 import createTagMethods from './routes/tag.js';
+import createUserFeedMethods from './routes/userFeed.js';
 import createPublicMethods from './routes/public.js';
 import createSettingsMethods from './routes/settings.js';
 import createDeviceMethods from './routes/device.js';
@@ -130,6 +131,7 @@ class NuramaClient {
         this.version = createVersionMethods(this);
         this.config = createConfigMethods(this);
         this.tag = createTagMethods(this);
+        this.userFeed = createUserFeedMethods(this);
         this.public = createPublicMethods(this);
         this.settings = createSettingsMethods(this);
         this.device = createDeviceMethods(this);

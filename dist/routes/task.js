@@ -71,32 +71,28 @@ export default function createTaskMethods(client) {
             });
         },
         /**
-             * Retrieves the count of unacknowledged tasks for the current user within a specific project.
-             * Requires authentication.
-             * @param {string} projectId - The ID of the project.
+             * Retrieves the count of unacknowledged tasks for the current user within a specific project,
+             * or across every project when none is given. Requires authentication.
+             * @param {string} [projectId] - The ID of the project; omit for every project.
              * @returns {Promise<UnacknowledgedTaskCountResponse>} An object containing total, creator, and reviewer unacknowledged task counts.
              */
         async getUnacknowledgedTaskCount(projectId) {
-            if (!projectId)
-                throw new Error('projectId is required.');
             return client._request({
                 method: 'GET',
-                endpoint: `/v1/tasks/unacknowledged/${projectId}`,
+                endpoint: projectId ? `/v1/tasks/unacknowledged/${projectId}` : '/v1/tasks/unacknowledged',
                 sendJWT: true,
             });
         },
         /**
              * Acknowledge every unacknowledged mention-task the current user has in a
-             * project. Idempotent server-side.
-             * @param {string} projectId - The ID of the project.
+             * project, or in every project when none is given. Idempotent server-side.
+             * @param {string} [projectId] - The ID of the project; omit for every project.
              * @returns {Promise<AcknowledgeAllTasksResponse>} The number acknowledged and the remaining unacknowledged count.
              */
         async acknowledgeAllTasks(projectId) {
-            if (!projectId)
-                throw new Error('projectId is required.');
             return client._request({
                 method: 'PUT',
-                endpoint: `/v1/tasks/acknowledge-all/${projectId}`,
+                endpoint: projectId ? `/v1/tasks/acknowledge-all/${projectId}` : '/v1/tasks/acknowledge-all',
                 sendJWT: true,
             });
         },

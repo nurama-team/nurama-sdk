@@ -19,6 +19,7 @@ import {
   type FeedVisibility,
   type ListFeedEventsParams,
   type CursorPaginatedFeedEvents,
+  type ReadState,
 } from '@nurama/types';
 
 // Combine pagination metadata with a results array
@@ -593,6 +594,44 @@ export default function createProjectMethods(client: NuramaClient) {
       return client._request<FeedEvent>({
         method: 'DELETE',
         endpoint: `/v1/projects/${projectId}/feed-events/${visibility}/${eventId}/reaction`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Gets where you had read up to in a project feed, and how many cards have
+     * moved since. `lastReadAt` is null if you have never recorded a position,
+     * and `unreadCount` is 0 then. Cards you are the actor on never count.
+     * @param {string} projectId - The ID of the project.
+     * @param {'creator' | 'reviewer'} visibility - Which feed to read.
+     * @returns {Promise<ReadState>} Your reading position in that feed.
+     */
+    async getFeedReadState(projectId: string, visibility: FeedVisibility): Promise<ReadState> {
+      if (!projectId) throw new Error('projectId is required.');
+      if (!visibility) throw new Error('visibility is required (creator or reviewer).');
+
+      return client._request<ReadState>({
+        method: 'GET',
+        endpoint: `/v1/projects/${projectId}/feed-events/${visibility}/read-state`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Marks a project feed as caught up. Pass `lastReadAt` (epoch ms) to catch
+     * up to the newest card you had loaded; omit it to catch up to now. The
+     * marker only moves forward and never past the present, so a stale value is
+     * a no-op rather than an error.
+     * @returns {Promise<ReadState>} Your updated reading position.
+     */
+    async markFeedCaughtUp(projectId: string, visibility: FeedVisibility, lastReadAt?: number): Promise<ReadState> {
+      if (!projectId) throw new Error('projectId is required.');
+      if (!visibility) throw new Error('visibility is required (creator or reviewer).');
+
+      return client._request<ReadState>({
+        method: 'POST',
+        endpoint: `/v1/projects/${projectId}/feed-events/${visibility}/read-state`,
+        body: lastReadAt === undefined ? {} : { lastReadAt },
         sendJWT: true,
       });
     },

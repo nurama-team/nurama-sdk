@@ -233,6 +233,44 @@ export default function createProjectMethods(client) {
                 sendJWT: true,
             });
         },
+        /**
+         * Gets where you had read up to in a project feed, and how many cards have
+         * moved since. `lastReadAt` is null if you have never recorded a position,
+         * and `unreadCount` is 0 then. Cards you are the actor on never count.
+         * @param {string} projectId - The ID of the project.
+         * @param {'creator' | 'reviewer'} visibility - Which feed to read.
+         * @returns {Promise<ReadState>} Your reading position in that feed.
+         */
+        async getFeedReadState(projectId, visibility) {
+            if (!projectId)
+                throw new Error('projectId is required.');
+            if (!visibility)
+                throw new Error('visibility is required (creator or reviewer).');
+            return client._request({
+                method: 'GET',
+                endpoint: `/v1/projects/${projectId}/feed-events/${visibility}/read-state`,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Marks a project feed as caught up. Pass `lastReadAt` (epoch ms) to catch
+         * up to the newest card you had loaded; omit it to catch up to now. The
+         * marker only moves forward and never past the present, so a stale value is
+         * a no-op rather than an error.
+         * @returns {Promise<ReadState>} Your updated reading position.
+         */
+        async markFeedCaughtUp(projectId, visibility, lastReadAt) {
+            if (!projectId)
+                throw new Error('projectId is required.');
+            if (!visibility)
+                throw new Error('visibility is required (creator or reviewer).');
+            return client._request({
+                method: 'POST',
+                endpoint: `/v1/projects/${projectId}/feed-events/${visibility}/read-state`,
+                body: lastReadAt === undefined ? {} : { lastReadAt },
+                sendJWT: true,
+            });
+        },
         // --- Folder Listing ---
         /**
          * Gets folders within a project with specified visibility.

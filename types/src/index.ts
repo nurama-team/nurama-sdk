@@ -32,6 +32,8 @@ export * from './scratch';
 export * from './ai-revision';
 export * from './search';
 export * from './feed-event';
+export * from './read-state';
+export * from './user-feed';
 
 // Utility/Helper types
 export * from './pagination';

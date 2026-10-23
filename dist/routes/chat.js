@@ -193,6 +193,58 @@ export default function createChatMethods(client) {
             });
         },
         /**
+         * Gets unread state for every member chat you belong to — one row per chat,
+         * carrying the chat's `lastMessageAt`, your `lastReadAt` and a `hasUnread`
+         * flag. Compares timestamps rather than counting, so it costs the same
+         * whether you have three chats or three hundred; for a count, read the
+         * single-chat endpoint for the chat on screen.
+         * @returns {Promise<{ results: MemberChatReadState[] }>} Unread state per member chat.
+         */
+        async getMemberChatReadStates() {
+            return client._request({
+                method: 'GET',
+                endpoint: `/v1/chats/member/read-state`,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Gets where you had read up to in a member chat, and how many messages have
+         * arrived since. `lastReadAt` is null if you have never recorded a position,
+         * and `unreadCount` is 0 then. Your own messages never count.
+         * @param {string} chatId - The ID of the member chat.
+         * @returns {Promise<ReadState>} Your reading position in that chat.
+         * @throws {Error} 'chatId is required.' when `chatId` is falsy.
+         */
+        async getMemberChatReadState(chatId) {
+            if (!chatId)
+                throw new Error('chatId is required.');
+            return client._request({
+                method: 'GET',
+                endpoint: `/v1/chats/member/${chatId}/read-state`,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Marks a member chat as caught up. Pass `lastReadAt` (epoch ms) to catch up
+         * to the newest message you had loaded; omit it to catch up to now. The
+         * marker only moves forward and never past the present, so a stale value is
+         * a no-op rather than an error.
+         * @param {string} chatId - The ID of the member chat.
+         * @param {number} [lastReadAt] - Epoch ms of the newest message you had loaded.
+         * @returns {Promise<ReadState>} Your updated reading position.
+         * @throws {Error} 'chatId is required.' when `chatId` is falsy.
+         */
+        async markMemberChatCaughtUp(chatId, lastReadAt) {
+            if (!chatId)
+                throw new Error('chatId is required.');
+            return client._request({
+                method: 'POST',
+                endpoint: `/v1/chats/member/${chatId}/read-state`,
+                body: lastReadAt === undefined ? {} : { lastReadAt },
+                sendJWT: true,
+            });
+        },
+        /**
          * Creates an icon asset for a member chat and returns signed upload URLs for it.
          * Any existing icon is marked for deletion. The caller must be a member of the chat;
          * `sizeInMB` is capped at 10 and `name` at 100 characters. Upload the file to the

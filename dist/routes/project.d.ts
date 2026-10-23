@@ -1,6 +1,6 @@
 import NuramaClient from '../NuramaClient.js';
 import { type Project, type Asset, type Folder, type Chat, type ChatMessage, type ChatSubmission, // Correct type name
-type PaginatedResult, type CursorPaginatedResult, type PublicAssetResponse, type PublicChatMessagesResponse, type CreatePublicChatMessageRequest, type CreatePublicAssetChatMessageResponse, type SearchProjectParams, type SearchResponse, type DeleteImpact, type FeedEvent, type FeedVisibility, type ListFeedEventsParams, type CursorPaginatedFeedEvents } from '@nurama/types';
+type PaginatedResult, type CursorPaginatedResult, type PublicAssetResponse, type PublicChatMessagesResponse, type CreatePublicChatMessageRequest, type CreatePublicAssetChatMessageResponse, type SearchProjectParams, type SearchResponse, type DeleteImpact, type FeedEvent, type FeedVisibility, type ListFeedEventsParams, type CursorPaginatedFeedEvents, type ReadState } from '@nurama/types';
 export type PaginatedResponse<T> = (PaginatedResult | CursorPaginatedResult) & {
     results?: T[];
 };
@@ -393,6 +393,23 @@ export default function createProjectMethods(client: NuramaClient): {
      * @returns {Promise<FeedEvent>} The updated event.
      */
     removeFeedEventReaction(projectId: string, visibility: FeedVisibility, eventId: string): Promise<FeedEvent>;
+    /**
+     * Gets where you had read up to in a project feed, and how many cards have
+     * moved since. `lastReadAt` is null if you have never recorded a position,
+     * and `unreadCount` is 0 then. Cards you are the actor on never count.
+     * @param {string} projectId - The ID of the project.
+     * @param {'creator' | 'reviewer'} visibility - Which feed to read.
+     * @returns {Promise<ReadState>} Your reading position in that feed.
+     */
+    getFeedReadState(projectId: string, visibility: FeedVisibility): Promise<ReadState>;
+    /**
+     * Marks a project feed as caught up. Pass `lastReadAt` (epoch ms) to catch
+     * up to the newest card you had loaded; omit it to catch up to now. The
+     * marker only moves forward and never past the present, so a stale value is
+     * a no-op rather than an error.
+     * @returns {Promise<ReadState>} Your updated reading position.
+     */
+    markFeedCaughtUp(projectId: string, visibility: FeedVisibility, lastReadAt?: number): Promise<ReadState>;
     /**
      * Gets folders within a project with specified visibility.
      * @param {string} projectId - The ID of the project.

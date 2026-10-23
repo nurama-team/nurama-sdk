@@ -4159,27 +4159,32 @@
       /**
        * Gets the options for the browser's passkey sign-in prompt. Pass them to the WebAuthn library
        * (`startAuthentication` in @simplewebauthn/browser), then send its result to `loginWithPasskey`.
+       * @param origin - The web origin to sign in for, from a native app (which has no browser `Origin`); pass the
+       *   same one to `loginWithPasskey`. Browsers send their own and ignore this.
        * @returns Promise resolving to WebAuthn request options.
        */
-      async getPasskeyLoginOptions() {
+      async getPasskeyLoginOptions(origin) {
         return client._request({
           endpoint: "/v1/auth/passkeys/login-options",
           method: "POST",
-          sendJWT: false
+          sendJWT: false,
+          ...origin ? { customHeaders: { Origin: origin } } : {}
         });
       },
       /**
        * Signs in with the browser's response to the passkey prompt and stores the tokens.
        * A passkey stands in for two-factor, so this never returns an MFA challenge.
        * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+       * @param origin - From a native app: the origin passed to `getPasskeyLoginOptions`.
        * @returns Promise resolving to the user and tokens.
        */
-      async loginWithPasskey(credential) {
+      async loginWithPasskey(credential, origin) {
         const result = await client._request({
           endpoint: "/v1/auth/passkeys/login",
           method: "POST",
           body: { credential },
-          sendJWT: false
+          sendJWT: false,
+          ...origin ? { customHeaders: { Origin: origin } } : {}
         });
         client._setTokens(
           result.tokens.access.token,
@@ -4188,6 +4193,21 @@
           result.tokens.refresh.expires
         );
         return result;
+      },
+      /**
+       * Signs the desktop app in with a passkey, from the browser. Stores nothing: the tokens wait behind the
+       * returned one-time code, which the desktop app redeems with `exchangeOAuthCode(code, { codeVerifier })`.
+       * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+       * @param handoff - The `state` and PKCE `codeChallenge` the desktop app made.
+       * @returns Promise resolving to the one-time code.
+       */
+      async loginDesktopWithPasskey(credential, handoff) {
+        return client._request({
+          endpoint: "/v1/auth/passkeys/desktop-login",
+          method: "POST",
+          body: { credential, ...handoff },
+          sendJWT: false
+        });
       },
       /**
        * Gets the options for the browser's "create a passkey" prompt, after confirming who is asking.
@@ -4333,11 +4353,17 @@
           sendJWT: true
         });
       },
-      async exchangeOAuthCode(code) {
+      /**
+       * Exchanges a one-time sign-in code for tokens and stores them.
+       * @param code - The code from the sign-in redirect.
+       * @param options.codeVerifier - The PKCE verifier, for a code made with a challenge.
+       * @returns Promise resolving to the user and tokens, or a two-factor challenge.
+       */
+      async exchangeOAuthCode(code, { codeVerifier } = {}) {
         const result = await client._request({
           endpoint: "/v1/auth/oauth/exchange",
           method: "POST",
-          body: { code },
+          body: { code, ...codeVerifier ? { codeVerifier } : {} },
           sendJWT: false
           // No authentication needed - the code is the proof
         });
@@ -5105,6 +5131,40 @@
         return client._request({
           method: "DELETE",
           endpoint: `/v1/projects/${projectId}/feed-events/${visibility}/${eventId}/reaction`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Gets where you had read up to in a project feed, and how many cards have
+       * moved since. `lastReadAt` is null if you have never recorded a position,
+       * and `unreadCount` is 0 then. Cards you are the actor on never count.
+       * @param {string} projectId - The ID of the project.
+       * @param {'creator' | 'reviewer'} visibility - Which feed to read.
+       * @returns {Promise<ReadState>} Your reading position in that feed.
+       */
+      async getFeedReadState(projectId, visibility) {
+        if (!projectId) throw new Error("projectId is required.");
+        if (!visibility) throw new Error("visibility is required (creator or reviewer).");
+        return client._request({
+          method: "GET",
+          endpoint: `/v1/projects/${projectId}/feed-events/${visibility}/read-state`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Marks a project feed as caught up. Pass `lastReadAt` (epoch ms) to catch
+       * up to the newest card you had loaded; omit it to catch up to now. The
+       * marker only moves forward and never past the present, so a stale value is
+       * a no-op rather than an error.
+       * @returns {Promise<ReadState>} Your updated reading position.
+       */
+      async markFeedCaughtUp(projectId, visibility, lastReadAt) {
+        if (!projectId) throw new Error("projectId is required.");
+        if (!visibility) throw new Error("visibility is required (creator or reviewer).");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/projects/${projectId}/feed-events/${visibility}/read-state`,
+          body: lastReadAt === void 0 ? {} : { lastReadAt },
           sendJWT: true
         });
       },
@@ -7152,6 +7212,56 @@
         });
       },
       /**
+       * Gets unread state for every member chat you belong to — one row per chat,
+       * carrying the chat's `lastMessageAt`, your `lastReadAt` and a `hasUnread`
+       * flag. Compares timestamps rather than counting, so it costs the same
+       * whether you have three chats or three hundred; for a count, read the
+       * single-chat endpoint for the chat on screen.
+       * @returns {Promise<{ results: MemberChatReadState[] }>} Unread state per member chat.
+       */
+      async getMemberChatReadStates() {
+        return client._request({
+          method: "GET",
+          endpoint: `/v1/chats/member/read-state`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Gets where you had read up to in a member chat, and how many messages have
+       * arrived since. `lastReadAt` is null if you have never recorded a position,
+       * and `unreadCount` is 0 then. Your own messages never count.
+       * @param {string} chatId - The ID of the member chat.
+       * @returns {Promise<ReadState>} Your reading position in that chat.
+       * @throws {Error} 'chatId is required.' when `chatId` is falsy.
+       */
+      async getMemberChatReadState(chatId) {
+        if (!chatId) throw new Error("chatId is required.");
+        return client._request({
+          method: "GET",
+          endpoint: `/v1/chats/member/${chatId}/read-state`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Marks a member chat as caught up. Pass `lastReadAt` (epoch ms) to catch up
+       * to the newest message you had loaded; omit it to catch up to now. The
+       * marker only moves forward and never past the present, so a stale value is
+       * a no-op rather than an error.
+       * @param {string} chatId - The ID of the member chat.
+       * @param {number} [lastReadAt] - Epoch ms of the newest message you had loaded.
+       * @returns {Promise<ReadState>} Your updated reading position.
+       * @throws {Error} 'chatId is required.' when `chatId` is falsy.
+       */
+      async markMemberChatCaughtUp(chatId, lastReadAt) {
+        if (!chatId) throw new Error("chatId is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/chats/member/${chatId}/read-state`,
+          body: lastReadAt === void 0 ? {} : { lastReadAt },
+          sendJWT: true
+        });
+      },
+      /**
        * Creates an icon asset for a member chat and returns signed upload URLs for it.
        * Any existing icon is marked for deletion. The caller must be a member of the chat;
        * `sizeInMB` is capped at 10 and `name` at 100 characters. Upload the file to the
@@ -8987,30 +9097,28 @@
         });
       },
       /**
-           * Retrieves the count of unacknowledged tasks for the current user within a specific project.
-           * Requires authentication.
-           * @param {string} projectId - The ID of the project.
+           * Retrieves the count of unacknowledged tasks for the current user within a specific project,
+           * or across every project when none is given. Requires authentication.
+           * @param {string} [projectId] - The ID of the project; omit for every project.
            * @returns {Promise<UnacknowledgedTaskCountResponse>} An object containing total, creator, and reviewer unacknowledged task counts.
            */
       async getUnacknowledgedTaskCount(projectId) {
-        if (!projectId) throw new Error("projectId is required.");
         return client._request({
           method: "GET",
-          endpoint: `/v1/tasks/unacknowledged/${projectId}`,
+          endpoint: projectId ? `/v1/tasks/unacknowledged/${projectId}` : "/v1/tasks/unacknowledged",
           sendJWT: true
         });
       },
       /**
            * Acknowledge every unacknowledged mention-task the current user has in a
-           * project. Idempotent server-side.
-           * @param {string} projectId - The ID of the project.
+           * project, or in every project when none is given. Idempotent server-side.
+           * @param {string} [projectId] - The ID of the project; omit for every project.
            * @returns {Promise<AcknowledgeAllTasksResponse>} The number acknowledged and the remaining unacknowledged count.
            */
       async acknowledgeAllTasks(projectId) {
-        if (!projectId) throw new Error("projectId is required.");
         return client._request({
           method: "PUT",
-          endpoint: `/v1/tasks/acknowledge-all/${projectId}`,
+          endpoint: projectId ? `/v1/tasks/acknowledge-all/${projectId}` : "/v1/tasks/acknowledge-all",
           sendJWT: true
         });
       },
@@ -9299,6 +9407,98 @@
         return client._request({
           method: "DELETE",
           endpoint: `/v1/tags/${tagId}`,
+          sendJWT: true
+        });
+      }
+    };
+  }
+
+  // src/routes/userFeed.ts
+  function createUserFeedMethods(client) {
+    return {
+      /**
+       * Gets one page of your feed, most recent first. Pass `category` for only
+       * project activity or only action items; dismissed items are left out
+       * unless `states` asks for them.
+       * @returns {Promise<CursorPaginatedUserFeed>}
+       */
+      async getFeed(params) {
+        return client._request({
+          method: "GET",
+          endpoint: "/v1/users/feed",
+          params,
+          sendJWT: true
+        });
+      },
+      /**
+       * Gets every badge the app shows: open action items, project activity since
+       * you last caught up, and that activity broken down by project in
+       * `byProject` — one row per project with something new, for the badge on
+       * its icon. The two totals stop at 100.
+       *
+       * The totals and `byProject` move independently: the totals are measured
+       * against your feed-wide marker, each `byProject` row against that
+       * project's own. So catching up in the feed does not clear project badges,
+       * and reading one project does not clear the feed's own count.
+       * @returns {Promise<UserFeedSummary>}
+       */
+      async getSummary() {
+        return client._request({
+          method: "GET",
+          endpoint: "/v1/users/feed/summary",
+          sendJWT: true
+        });
+      },
+      /**
+       * Gets your reading position in your feed's project activity.
+       * @returns {Promise<ReadState>}
+       */
+      async getReadState() {
+        return client._request({
+          method: "GET",
+          endpoint: "/v1/users/feed/read-state",
+          sendJWT: true
+        });
+      },
+      /**
+       * Marks your feed's project activity as caught up. Pass `lastReadAt`
+       * (epoch ms) to catch up to the newest card you had loaded; omit it to
+       * catch up to now. The marker only moves forward.
+       * @returns {Promise<ReadState>}
+       */
+      async markCaughtUp(lastReadAt) {
+        return client._request({
+          method: "POST",
+          endpoint: "/v1/users/feed/read-state",
+          body: lastReadAt === void 0 ? {} : { lastReadAt },
+          sendJWT: true
+        });
+      },
+      /**
+       * Clears one of your action items (`dismissed`), or brings a cleared one
+       * back (`open`).
+       * @returns {Promise<UserFeedEntry>} The updated item.
+       */
+      async setEntryState(entryId, state) {
+        if (!entryId) throw new Error("entryId is required.");
+        return client._request({
+          method: "PATCH",
+          endpoint: `/v1/users/feed/${entryId}`,
+          body: { state },
+          sendJWT: true
+        });
+      },
+      /**
+       * Clears every open action item up to `before` (epoch ms) — the newest one
+       * you had loaded — so one that arrived since stays. Omit it to clear
+       * everything open now.
+       * @returns {Promise<{ dismissed: number }>}
+       */
+      async dismissAll(before) {
+        return client._request({
+          method: "POST",
+          endpoint: "/v1/users/feed/dismiss",
+          body: before === void 0 ? {} : { before },
           sendJWT: true
         });
       }
@@ -11356,10 +11556,10 @@
 
   // src/version.ts
   var SDK_VERSION = {
-    version: "1.4.3",
-    buildTimestamp: "2026-10-14T13:35:12.378Z",
-    buildHash: "df74c9b4b055b19a9012e0c265c3b94f",
-    gitCommit: "b66adea",
+    version: "1.4.4",
+    buildTimestamp: "2026-10-23T15:39:41.191Z",
+    buildHash: "b0bbfd265120e5fd826237cc63c5bf7d",
+    gitCommit: "7c333f8",
     dirty: false
   };
 
@@ -11440,6 +11640,7 @@
       this.version = createVersionMethods(this);
       this.config = createConfigMethods(this);
       this.tag = createTagMethods(this);
+      this.userFeed = createUserFeedMethods(this);
       this.public = createPublicMethods(this);
       this.settings = createSettingsMethods(this);
       this.device = createDeviceMethods(this);

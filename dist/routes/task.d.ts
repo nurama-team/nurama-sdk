@@ -17,6 +17,8 @@ export interface GetTasksBaseParams extends SortParams {
     relatedToId?: string;
     visibility?: TaskVisibility;
     acknowledged?: boolean;
+    /** `'chatMessage'` returns only mention-tasks; without it, board tasks assigned to you come too. */
+    originType?: 'chatMessage';
     limit?: number;
 }
 export interface GetTasksIndexParams extends GetTasksBaseParams {
@@ -152,19 +154,19 @@ export default function createTaskMethods(client: NuramaClient): {
          */
     acknowledgeTask(taskId: string): Promise<Task>;
     /**
-         * Retrieves the count of unacknowledged tasks for the current user within a specific project.
-         * Requires authentication.
-         * @param {string} projectId - The ID of the project.
+         * Retrieves the count of unacknowledged tasks for the current user within a specific project,
+         * or across every project when none is given. Requires authentication.
+         * @param {string} [projectId] - The ID of the project; omit for every project.
          * @returns {Promise<UnacknowledgedTaskCountResponse>} An object containing total, creator, and reviewer unacknowledged task counts.
          */
-    getUnacknowledgedTaskCount(projectId: string): Promise<UnacknowledgedTaskCountResponse>;
+    getUnacknowledgedTaskCount(projectId?: string): Promise<UnacknowledgedTaskCountResponse>;
     /**
          * Acknowledge every unacknowledged mention-task the current user has in a
-         * project. Idempotent server-side.
-         * @param {string} projectId - The ID of the project.
+         * project, or in every project when none is given. Idempotent server-side.
+         * @param {string} [projectId] - The ID of the project; omit for every project.
          * @returns {Promise<AcknowledgeAllTasksResponse>} The number acknowledged and the remaining unacknowledged count.
          */
-    acknowledgeAllTasks(projectId: string): Promise<AcknowledgeAllTasksResponse>;
+    acknowledgeAllTasks(projectId?: string): Promise<AcknowledgeAllTasksResponse>;
     /**
      * Add the calling user to a task's `followers` list.
      * Idempotent server-side — following an already-followed task is a no-op

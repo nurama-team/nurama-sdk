@@ -9,9 +9,23 @@ import {
   type Membership,
   type PaginatedResult,
   type CursorPaginatedResult,
+  type ReadState,
 } from '@nurama/types'; // Import pagination types
 
 // --- Common Interfaces ---
+
+/** Unread state for one member chat, as returned by `getMemberChatReadStates`. */
+export interface MemberChatReadState {
+  chatId: string;
+  /** Epoch ms of the newest message, or null when the chat is empty. */
+  lastMessageAt: number | null;
+  /** Epoch ms you last read to, or null when you never have. */
+  lastReadAt: number | null;
+  /** Messages newer than your position, excluding your own. */
+  unreadCount: number;
+  /** `unreadCount > 0`. Null `lastReadAt` does not imply false. */
+  hasUnread: boolean;
+}
 
 // Base interface for pagination options
 export interface PaginationParams {
@@ -613,6 +627,59 @@ export default function createChatMethods(client: NuramaClient) {
       return client._request({
         method: 'PUT',
         endpoint: `/v1/chats/member/${chatId}/unarchive`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Gets unread state for every member chat you belong to — one row per chat,
+     * carrying the chat's `lastMessageAt`, your `lastReadAt` and a `hasUnread`
+     * flag. Compares timestamps rather than counting, so it costs the same
+     * whether you have three chats or three hundred; for a count, read the
+     * single-chat endpoint for the chat on screen.
+     * @returns {Promise<{ results: MemberChatReadState[] }>} Unread state per member chat.
+     */
+    async getMemberChatReadStates(): Promise<{ results: MemberChatReadState[] }> {
+      return client._request<{ results: MemberChatReadState[] }>({
+        method: 'GET',
+        endpoint: `/v1/chats/member/read-state`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Gets where you had read up to in a member chat, and how many messages have
+     * arrived since. `lastReadAt` is null if you have never recorded a position,
+     * and `unreadCount` is 0 then. Your own messages never count.
+     * @param {string} chatId - The ID of the member chat.
+     * @returns {Promise<ReadState>} Your reading position in that chat.
+     * @throws {Error} 'chatId is required.' when `chatId` is falsy.
+     */
+    async getMemberChatReadState(chatId: string): Promise<ReadState> {
+      if (!chatId) throw new Error('chatId is required.');
+      return client._request<ReadState>({
+        method: 'GET',
+        endpoint: `/v1/chats/member/${chatId}/read-state`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Marks a member chat as caught up. Pass `lastReadAt` (epoch ms) to catch up
+     * to the newest message you had loaded; omit it to catch up to now. The
+     * marker only moves forward and never past the present, so a stale value is
+     * a no-op rather than an error.
+     * @param {string} chatId - The ID of the member chat.
+     * @param {number} [lastReadAt] - Epoch ms of the newest message you had loaded.
+     * @returns {Promise<ReadState>} Your updated reading position.
+     * @throws {Error} 'chatId is required.' when `chatId` is falsy.
+     */
+    async markMemberChatCaughtUp(chatId: string, lastReadAt?: number): Promise<ReadState> {
+      if (!chatId) throw new Error('chatId is required.');
+      return client._request<ReadState>({
+        method: 'POST',
+        endpoint: `/v1/chats/member/${chatId}/read-state`,
+        body: lastReadAt === undefined ? {} : { lastReadAt },
         sendJWT: true,
       });
     },

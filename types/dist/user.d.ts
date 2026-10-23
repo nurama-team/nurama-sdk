@@ -189,6 +189,26 @@ export interface OAuthExchangeRequest {
      * Exchange code received from OAuth callback
      */
     code: string;
+    /**
+     * PKCE verifier, for a code made with a challenge (the desktop app's passkey sign-in)
+     */
+    codeVerifier?: string;
+}
+/**
+ * Signing the desktop app in with a passkey, sent from the browser: the passkey response plus the `state` and PKCE
+ * challenge the desktop app made.
+ */
+export interface PasskeyDesktopLoginRequest {
+    credential: PasskeyCredentialResponse;
+    state: string;
+    /** base64url SHA-256 of the desktop app's code verifier (S256) */
+    codeChallenge: string;
+}
+/**
+ * The one-time code the browser hands to the desktop app, which redeems it with its verifier.
+ */
+export interface PasskeyDesktopLoginResponse {
+    code: string;
 }
 /**
  * OAuth exchange response with user and tokens

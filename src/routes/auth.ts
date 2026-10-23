@@ -13,6 +13,8 @@ import {
   type PasskeyRegistrationProof,
   type PasskeyCredentialOptions,
   type PasskeyCredentialResponse,
+  type PasskeyDesktopLoginRequest,
+  type PasskeyDesktopLoginResponse,
 } from '@nurama/types';
 
 // Define specific types for auth requests
@@ -475,13 +477,16 @@ export default function createAuthMethods(client: NuramaClient) {
     /**
      * Gets the options for the browser's passkey sign-in prompt. Pass them to the WebAuthn library
      * (`startAuthentication` in @simplewebauthn/browser), then send its result to `loginWithPasskey`.
+     * @param origin - The web origin to sign in for, from a native app (which has no browser `Origin`); pass the
+     *   same one to `loginWithPasskey`. Browsers send their own and ignore this.
      * @returns Promise resolving to WebAuthn request options.
      */
-    async getPasskeyLoginOptions(): Promise<PasskeyCredentialOptions> {
+    async getPasskeyLoginOptions(origin?: string): Promise<PasskeyCredentialOptions> {
       return client._request<PasskeyCredentialOptions>({
         endpoint: "/v1/auth/passkeys/login-options",
         method: "POST",
         sendJWT: false,
+        ...(origin ? { customHeaders: { Origin: origin } } : {}),
       });
     },
 
@@ -489,14 +494,16 @@ export default function createAuthMethods(client: NuramaClient) {
      * Signs in with the browser's response to the passkey prompt and stores the tokens.
      * A passkey stands in for two-factor, so this never returns an MFA challenge.
      * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+     * @param origin - From a native app: the origin passed to `getPasskeyLoginOptions`.
      * @returns Promise resolving to the user and tokens.
      */
-    async loginWithPasskey(credential: PasskeyCredentialResponse): Promise<LoginRegisterResponse> {
+    async loginWithPasskey(credential: PasskeyCredentialResponse, origin?: string): Promise<LoginRegisterResponse> {
       const result: LoginRegisterResponse = await client._request({
         endpoint: "/v1/auth/passkeys/login",
         method: "POST",
         body: { credential },
         sendJWT: false,
+        ...(origin ? { customHeaders: { Origin: origin } } : {}),
       });
       (client as any)._setTokens(
         result.tokens.access.token,
@@ -505,6 +512,25 @@ export default function createAuthMethods(client: NuramaClient) {
         result.tokens.refresh.expires
       );
       return result;
+    },
+
+    /**
+     * Signs the desktop app in with a passkey, from the browser. Stores nothing: the tokens wait behind the
+     * returned one-time code, which the desktop app redeems with `exchangeOAuthCode(code, { codeVerifier })`.
+     * @param credential - The WebAuthn library's AuthenticationResponseJSON.
+     * @param handoff - The `state` and PKCE `codeChallenge` the desktop app made.
+     * @returns Promise resolving to the one-time code.
+     */
+    async loginDesktopWithPasskey(
+      credential: PasskeyCredentialResponse,
+      handoff: Omit<PasskeyDesktopLoginRequest, "credential">
+    ): Promise<PasskeyDesktopLoginResponse> {
+      return client._request<PasskeyDesktopLoginResponse>({
+        endpoint: "/v1/auth/passkeys/desktop-login",
+        method: "POST",
+        body: { credential, ...handoff } satisfies PasskeyDesktopLoginRequest,
+        sendJWT: false,
+      });
     },
 
     /**
@@ -661,11 +687,17 @@ export default function createAuthMethods(client: NuramaClient) {
       });
     },
 
-    async exchangeOAuthCode(code: string): Promise<OAuthExchangeResponse> {
+    /**
+     * Exchanges a one-time sign-in code for tokens and stores them.
+     * @param code - The code from the sign-in redirect.
+     * @param options.codeVerifier - The PKCE verifier, for a code made with a challenge.
+     * @returns Promise resolving to the user and tokens, or a two-factor challenge.
+     */
+    async exchangeOAuthCode(code: string, { codeVerifier }: { codeVerifier?: string } = {}): Promise<OAuthExchangeResponse> {
       const result: OAuthExchangeResponse = await client._request({
         endpoint: "/v1/auth/oauth/exchange",
         method: "POST",
-        body: { code } satisfies OAuthExchangeRequest,
+        body: { code, ...(codeVerifier ? { codeVerifier } : {}) } satisfies OAuthExchangeRequest,
         sendJWT: false, // No authentication needed - the code is the proof
       });
 
