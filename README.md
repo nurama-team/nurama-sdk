@@ -5,7 +5,7 @@ Provides API, web-socket, and additional utilities for interfacing with the Nura
 ## Installation
 
 ```bash
-npm install nurama-sdk
+npm install @nurama/sdk
 ```
 
 ## Usage
@@ -13,7 +13,7 @@ npm install nurama-sdk
 ### Basic API Usage
 
 ```javascript
-import NuramaClient from 'nurama-sdk';
+import NuramaClient from '@nurama/sdk';
 
 // Create client instance
 const client = new NuramaClient('https://api.nurama.com', {
@@ -36,7 +36,7 @@ console.log(workspaces);
 The SDK provides WebSocket functionality for real-time notifications and events. Socket.IO is used under the hood, which handles protocol conversion automatically.
 
 ```javascript
-import NuramaClient from 'nurama-sdk';
+import NuramaClient from '@nurama/sdk';
 
 // Create client instance with a separate WebSocket server URL if needed
 const client = new NuramaClient('https://api.nurama.com', {
@@ -185,7 +185,7 @@ The `NuramaClient` constructor accepts various options for customization:
 
 ```javascript
 // Import the client
-import NuramaClient from 'nurama-sdk';
+import NuramaClient from '@nurama/sdk';
 
 // Initialize with options
 const nurama = new NuramaClient('https://api.nurama.com', {
@@ -668,7 +668,7 @@ await client.notification.getNotifications({
 The URL parameter utility can also be used independently:
 
 ```javascript
-import { parseUrlParams, paramsToUrlSearchParams } from 'nurama-sdk/utils/urlParams';
+import { parseUrlParams, paramsToUrlSearchParams } from '@nurama/sdk/utils/urlParams';
 
 // Convert parameters to string record
 const stringParams = parseUrlParams({
@@ -691,7 +691,7 @@ console.log(urlParams.toString()); // "page=1&limit=10&active=true"
 The utility supports configuration options (though the defaults work well for the Nurama API):
 
 ```javascript
-import { parseUrlParams } from 'nurama-sdk/utils/urlParams';
+import { parseUrlParams } from '@nurama/sdk/utils/urlParams';
 
 const result = parseUrlParams(params, {
   arrayFormat: 'comma',      // 'comma' or 'brackets' (key[]=val1&key[]=val2)
@@ -983,7 +983,7 @@ console.log('Git Commit:', versionInfo.gitCommit);
 **TypeScript Type:**
 
 ```typescript
-import { type SDKVersionInfo } from 'nurama-sdk';
+import { type SDKVersionInfo } from '@nurama/sdk';
 
 interface SDKVersionInfo {
   version: string;           // Semantic version (e.g., "1.3.3")

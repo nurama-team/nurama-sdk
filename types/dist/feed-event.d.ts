@@ -8,7 +8,7 @@ import { CursorPaginatedResult } from './pagination';
  * Every card is self-contained: `data` carries everything it renders, so a
  * page of the feed needs no further lookups.
  */
-export type FeedEventKind = 'upload' | 'assetChat' | 'projectChat' | 'publish' | 'submission' | 'public' | 'member' | 'task';
+export type FeedEventKind = 'upload' | 'assetChat' | 'projectChat' | 'taskChat' | 'publish' | 'submission' | 'public' | 'member' | 'task';
 export type FeedVisibility = 'creator' | 'reviewer';
 /** The slice of an asset a card draws: name, type and thumbnail files. */
 export interface FeedEventAssetPreview {
@@ -61,6 +61,31 @@ export interface FeedEventProjectChatData {
     chatId: ObjectId;
     /** The chat's own subject, where it has been given one. */
     chatSubject: string | null;
+    participants: PublicUser[];
+    participantCount: number;
+    /** Oldest → newest, at most five. */
+    recentMessages: FeedEventChatMessage[];
+    messageCount: number;
+}
+/** The task a task-chat card is about, as the card draws it. */
+export interface FeedEventTaskPreview {
+    id: ObjectId;
+    /** The project's task number (#12), when the task has one. */
+    number: number | null;
+    subject: string;
+    status: string;
+    /** The board it's on — opening the card deep-links there (`?task=<id>`). */
+    boardId: ObjectId | null;
+    /** The board's name — current as of the page load, not when the card was written. */
+    boardName: string | null;
+}
+/**
+ * `data` for task-chat cards: a discussion in a board task's own chat. The
+ * same shape as an asset chat's, about a task rather than an asset.
+ */
+export interface FeedEventTaskChatData {
+    task: FeedEventTaskPreview;
+    chatId: ObjectId;
     participants: PublicUser[];
     participantCount: number;
     /** Oldest → newest, at most five. */
@@ -127,6 +152,8 @@ interface FeedEventBase {
     subjectKey: ObjectId | null;
     actorId: ObjectId | null;
     assetIds: ObjectId[];
+    /** Every task the card covers: a task card's rows, a task-chat card's task. */
+    taskIds: ObjectId[];
     mediaTypes: string[];
     searchText: string;
     reactions: FeedEventReaction[];
@@ -151,6 +178,9 @@ export type FeedEvent = (FeedEventBase & {
 }) | (FeedEventBase & {
     kind: 'projectChat';
     data: FeedEventProjectChatData;
+}) | (FeedEventBase & {
+    kind: 'taskChat';
+    data: FeedEventTaskChatData;
 }) | (FeedEventBase & {
     kind: 'submission';
     data: FeedEventSubmissionData;

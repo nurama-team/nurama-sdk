@@ -13,6 +13,7 @@ export type FeedEventKind =
   | 'upload'
   | 'assetChat'
   | 'projectChat'
+  | 'taskChat'
   | 'publish'
   | 'submission'
   | 'public'
@@ -84,6 +85,33 @@ export interface FeedEventProjectChatData {
   messageCount: number;
 }
 
+/** The task a task-chat card is about, as the card draws it. */
+export interface FeedEventTaskPreview {
+  id: ObjectId;
+  /** The project's task number (#12), when the task has one. */
+  number: number | null;
+  subject: string;
+  status: string;
+  /** The board it's on — opening the card deep-links there (`?task=<id>`). */
+  boardId: ObjectId | null;
+  /** The board's name — current as of the page load, not when the card was written. */
+  boardName: string | null;
+}
+
+/**
+ * `data` for task-chat cards: a discussion in a board task's own chat. The
+ * same shape as an asset chat's, about a task rather than an asset.
+ */
+export interface FeedEventTaskChatData {
+  task: FeedEventTaskPreview;
+  chatId: ObjectId;
+  participants: PublicUser[];
+  participantCount: number;
+  /** Oldest → newest, at most five. */
+  recentMessages: FeedEventChatMessage[];
+  messageCount: number;
+}
+
 export interface FeedEventSubmissionData extends FeedEventGroupData {
   submissionId: ObjectId;
   subject: string | null;
@@ -142,6 +170,8 @@ interface FeedEventBase {
   subjectKey: ObjectId | null;
   actorId: ObjectId | null;
   assetIds: ObjectId[];
+  /** Every task the card covers: a task card's rows, a task-chat card's task. */
+  taskIds: ObjectId[];
   mediaTypes: string[];
   searchText: string;
   reactions: FeedEventReaction[];
@@ -162,6 +192,7 @@ export type FeedEvent =
   | (FeedEventBase & { kind: 'upload' | 'publish'; data: FeedEventGroupData })
   | (FeedEventBase & { kind: 'assetChat'; data: FeedEventAssetChatData })
   | (FeedEventBase & { kind: 'projectChat'; data: FeedEventProjectChatData })
+  | (FeedEventBase & { kind: 'taskChat'; data: FeedEventTaskChatData })
   | (FeedEventBase & { kind: 'submission'; data: FeedEventSubmissionData })
   | (FeedEventBase & { kind: 'public'; data: FeedEventPublicData })
   | (FeedEventBase & { kind: 'member'; data: FeedEventMemberData })
