@@ -1,6 +1,6 @@
 {
   "name": "@nurama/types",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "description": "Shared TypeScript types for the Nurama ecosystem",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

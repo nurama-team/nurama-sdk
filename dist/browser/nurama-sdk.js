@@ -5974,6 +5974,39 @@
         });
       },
       /**
+       * Gets your reading position in a project's highlights: when you last
+       * caught up, and how many messages others have highlighted since. If you
+       * have never caught up, it counts from when read tracking began.
+       * @param {string} projectId - The project ID.
+       * @param {'creator' | 'reviewer'} visibility - Which highlights.
+       * @returns {Promise<ReadState>} Your reading position.
+       */
+      async getHighlightsReadState(projectId, visibility) {
+        if (!projectId) throw new Error("projectId is required.");
+        if (!visibility) throw new Error("visibility is required.");
+        return client._request({
+          method: "GET",
+          endpoint: `/v1/projects/${projectId}/${visibility}/highlighted-messages/read-state`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Marks a project's highlights as read. Pass `lastReadAt` (epoch ms) — the
+       * `highlightedAt` of the newest highlight you had loaded; omit it to catch
+       * up to now. The marker only moves forward and never past the present.
+       * @returns {Promise<ReadState>} Your updated reading position.
+       */
+      async markHighlightsCaughtUp(projectId, visibility, lastReadAt) {
+        if (!projectId) throw new Error("projectId is required.");
+        if (!visibility) throw new Error("visibility is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/projects/${projectId}/${visibility}/highlighted-messages/read-state`,
+          body: lastReadAt === void 0 ? {} : { lastReadAt },
+          sendJWT: true
+        });
+      },
+      /**
        * Top-N assets in a project by access-activity event type (plays, downloads, embeds).
        * Requires project read access. Returns asset IDs and counts only; hydrate names and
        * thumbnails through the normal asset fetch path.
@@ -11556,10 +11589,10 @@
 
   // src/version.ts
   var SDK_VERSION = {
-    version: "1.4.5",
-    buildTimestamp: "2026-10-29T06:59:31.498Z",
-    buildHash: "b0bbfd265120e5fd826237cc63c5bf7d",
-    gitCommit: "9307f8f",
+    version: "1.4.6",
+    buildTimestamp: "2026-10-30T09:37:39.703Z",
+    buildHash: "591a47b7ee697e4b2fd756a50b5b647e",
+    gitCommit: "e46370d",
     dirty: false
   };
 

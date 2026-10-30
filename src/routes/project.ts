@@ -1539,6 +1539,43 @@ export default function createProjectMethods(client: NuramaClient) {
     },
 
     /**
+     * Gets your reading position in a project's highlights: when you last
+     * caught up, and how many messages others have highlighted since. If you
+     * have never caught up, it counts from when read tracking began.
+     * @param {string} projectId - The project ID.
+     * @param {'creator' | 'reviewer'} visibility - Which highlights.
+     * @returns {Promise<ReadState>} Your reading position.
+     */
+    async getHighlightsReadState(projectId: string, visibility: 'creator' | 'reviewer'): Promise<ReadState> {
+      if (!projectId) throw new Error('projectId is required.');
+      if (!visibility) throw new Error('visibility is required.');
+
+      return client._request<ReadState>({
+        method: 'GET',
+        endpoint: `/v1/projects/${projectId}/${visibility}/highlighted-messages/read-state`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Marks a project's highlights as read. Pass `lastReadAt` (epoch ms) — the
+     * `highlightedAt` of the newest highlight you had loaded; omit it to catch
+     * up to now. The marker only moves forward and never past the present.
+     * @returns {Promise<ReadState>} Your updated reading position.
+     */
+    async markHighlightsCaughtUp(projectId: string, visibility: 'creator' | 'reviewer', lastReadAt?: number): Promise<ReadState> {
+      if (!projectId) throw new Error('projectId is required.');
+      if (!visibility) throw new Error('visibility is required.');
+
+      return client._request<ReadState>({
+        method: 'POST',
+        endpoint: `/v1/projects/${projectId}/${visibility}/highlighted-messages/read-state`,
+        body: lastReadAt === undefined ? {} : { lastReadAt },
+        sendJWT: true,
+      });
+    },
+
+    /**
      * Top-N assets in a project by access-activity event type (plays, downloads, embeds).
      * Requires project read access. Returns asset IDs and counts only; hydrate names and
      * thumbnails through the normal asset fetch path.

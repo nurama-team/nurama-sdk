@@ -214,6 +214,14 @@ interface BaseChatMessage {
    */
   updatedAt?: number;
   /**
+   * Whether the message is highlighted, and by whom and when. `highlightedAt`
+   * is what the highlights drawer's "new" markers compare against.
+   */
+  highlighted?: boolean;
+  highlightedById?: ObjectId | null;
+  /** @format int64 */
+  highlightedAt?: number | null;
+  /**
    * AI authoring role. Null on plain user messages; set when Nu wrote the
    * row. See packages/types/src/chat-ai.ts for the surrounding topic shape.
    */
