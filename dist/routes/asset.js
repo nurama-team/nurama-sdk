@@ -120,6 +120,80 @@ export default function createAssetMethods(client) {
             });
         },
         /**
+         * Where an asset's original is, what the project's pruning policy will do
+         * with it, and whether it can be pruned by hand now. Needs `canGetAssetOriginal`.
+         * @param {string} assetId - The ID of the asset.
+         * @returns {Promise<AssetOriginalStatus>} The original's state.
+         */
+        async getOriginal(assetId) {
+            if (!assetId)
+                throw new Error('assetId is required.');
+            return client._request({
+                method: 'GET',
+                endpoint: `/v1/assets/${assetId}/original`,
+                sendJWT: true,
+            });
+        },
+        /**
+         * The history of an asset's original, newest first. Needs `canGetAssetOriginal`.
+         * @param {string} assetId - The ID of the asset.
+         * @returns {Promise<{ results: AssetOriginalHistoryEntry[] }>} The history.
+         */
+        async getOriginalHistory(assetId) {
+            if (!assetId)
+                throw new Error('assetId is required.');
+            return client._request({
+                method: 'GET',
+                endpoint: `/v1/assets/${assetId}/original/history`,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Requests that an asset's original be pruned once the undo window has
+         * passed (`pruneAfter`). Needs `canPruneAsset`.
+         * @param {string} assetId - The ID of the asset.
+         * @returns {Promise<Asset>} The asset, now waiting to be pruned.
+         */
+        async pruneOriginal(assetId) {
+            if (!assetId)
+                throw new Error('assetId is required.');
+            return client._request({
+                method: 'POST',
+                endpoint: `/v1/assets/${assetId}/original/prune`,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Cancels a requested prune before it runs. Needs `canPruneAsset`.
+         * @param {string} assetId - The ID of the asset.
+         * @returns {Promise<Asset>} The asset, with its original back to `stored`.
+         */
+        async cancelPruneOriginal(assetId) {
+            if (!assetId)
+                throw new Error('assetId is required.');
+            return client._request({
+                method: 'DELETE',
+                endpoint: `/v1/assets/${assetId}/original/prune`,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Exempts an asset from pruning, or lifts the exemption. Needs `canPruneAsset`.
+         * @param {string} assetId - The ID of the asset.
+         * @param {boolean} keepOriginal - True to exempt the asset.
+         * @returns {Promise<Asset>} The asset.
+         */
+        async setKeepOriginal(assetId, keepOriginal) {
+            if (!assetId)
+                throw new Error('assetId is required.');
+            return client._request({
+                method: 'PUT',
+                endpoint: `/v1/assets/${assetId}/original/keep`,
+                body: { keepOriginal },
+                sendJWT: true,
+            });
+        },
+        /**
          * Updates an asset.
          * @param {string} assetId - The ID of the asset to update.
          * @param {UpdateAssetData} updateData - Data to update (e.g., name, meta, tags, folderId).

@@ -1223,6 +1223,70 @@ export default function createProjectMethods(client) {
                 sendJWT: true,
             });
         },
+        /**
+         * What pruning the originals of a selection of the project's assets would
+         * do, without doing it. Needs `canPruneAsset` on the project.
+         * @param {string} projectId - The project ID.
+         * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+         * @returns {Promise<AssetPrunePreview>} Each asset's eligibility, and the totals.
+         */
+        async previewPruneOriginals(projectId, selection) {
+            if (!projectId)
+                throw new Error('projectId is required.');
+            return client._request({
+                method: 'POST',
+                endpoint: `/v1/projects/${projectId}/original-pruning/preview`,
+                body: selection,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Requests prunes for every asset in the selection that can be pruned.
+         * Needs `canPruneAsset` on the project.
+         * @param {string} projectId - The project ID.
+         * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+         * @returns {Promise<AssetPruneRequestResult>} The requested and skipped assets.
+         */
+        async pruneOriginals(projectId, selection) {
+            if (!projectId)
+                throw new Error('projectId is required.');
+            return client._request({
+                method: 'POST',
+                endpoint: `/v1/projects/${projectId}/original-pruning/prune`,
+                body: selection,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Cancels every waiting prune in the selection. Needs `canPruneAsset` on the project.
+         * @param {string} projectId - The project ID.
+         * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+         * @returns {Promise<AssetPruneCancelResult>} The cancelled assets, and those with nothing waiting.
+         */
+        async cancelPruneOriginals(projectId, selection) {
+            if (!projectId)
+                throw new Error('projectId is required.');
+            return client._request({
+                method: 'POST',
+                endpoint: `/v1/projects/${projectId}/original-pruning/cancel`,
+                body: selection,
+                sendJWT: true,
+            });
+        },
+        /**
+         * The project's pruning policy and what it has done. Needs `canManageProjectSettings`.
+         * @param {string} projectId - The project ID.
+         * @returns {Promise<ProjectPruningSummary>} The summary.
+         */
+        async getOriginalPruningSummary(projectId) {
+            if (!projectId)
+                throw new Error('projectId is required.');
+            return client._request({
+                method: 'GET',
+                endpoint: `/v1/projects/${projectId}/original-pruning/summary`,
+                sendJWT: true,
+            });
+        },
     };
 }
 //# sourceMappingURL=project.js.map

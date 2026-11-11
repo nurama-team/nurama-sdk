@@ -20,6 +20,11 @@ import {
   type ListFeedEventsParams,
   type CursorPaginatedFeedEvents,
   type ReadState,
+  type AssetPruneSelection,
+  type AssetPrunePreview,
+  type AssetPruneRequestResult,
+  type AssetPruneCancelResult,
+  type ProjectPruningSummary,
 } from '@nurama/types';
 
 // Combine pagination metadata with a results array
@@ -1597,6 +1602,70 @@ export default function createProjectMethods(client: NuramaClient) {
         method: 'GET',
         endpoint: `/v1/projects/${projectId}/access-activity/top-assets`,
         params,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * What pruning the originals of a selection of the project's assets would
+     * do, without doing it. Needs `canPruneAsset` on the project.
+     * @param {string} projectId - The project ID.
+     * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+     * @returns {Promise<AssetPrunePreview>} Each asset's eligibility, and the totals.
+     */
+    async previewPruneOriginals(projectId: string, selection: AssetPruneSelection): Promise<AssetPrunePreview> {
+      if (!projectId) throw new Error('projectId is required.');
+      return client._request<AssetPrunePreview>({
+        method: 'POST',
+        endpoint: `/v1/projects/${projectId}/original-pruning/preview`,
+        body: selection,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Requests prunes for every asset in the selection that can be pruned.
+     * Needs `canPruneAsset` on the project.
+     * @param {string} projectId - The project ID.
+     * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+     * @returns {Promise<AssetPruneRequestResult>} The requested and skipped assets.
+     */
+    async pruneOriginals(projectId: string, selection: AssetPruneSelection): Promise<AssetPruneRequestResult> {
+      if (!projectId) throw new Error('projectId is required.');
+      return client._request<AssetPruneRequestResult>({
+        method: 'POST',
+        endpoint: `/v1/projects/${projectId}/original-pruning/prune`,
+        body: selection,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Cancels every waiting prune in the selection. Needs `canPruneAsset` on the project.
+     * @param {string} projectId - The project ID.
+     * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+     * @returns {Promise<AssetPruneCancelResult>} The cancelled assets, and those with nothing waiting.
+     */
+    async cancelPruneOriginals(projectId: string, selection: AssetPruneSelection): Promise<AssetPruneCancelResult> {
+      if (!projectId) throw new Error('projectId is required.');
+      return client._request<AssetPruneCancelResult>({
+        method: 'POST',
+        endpoint: `/v1/projects/${projectId}/original-pruning/cancel`,
+        body: selection,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * The project's pruning policy and what it has done. Needs `canManageProjectSettings`.
+     * @param {string} projectId - The project ID.
+     * @returns {Promise<ProjectPruningSummary>} The summary.
+     */
+    async getOriginalPruningSummary(projectId: string): Promise<ProjectPruningSummary> {
+      if (!projectId) throw new Error('projectId is required.');
+      return client._request<ProjectPruningSummary>({
+        method: 'GET',
+        endpoint: `/v1/projects/${projectId}/original-pruning/summary`,
         sendJWT: true,
       });
     },

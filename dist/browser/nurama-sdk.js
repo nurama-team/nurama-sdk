@@ -6023,6 +6023,66 @@
           params,
           sendJWT: true
         });
+      },
+      /**
+       * What pruning the originals of a selection of the project's assets would
+       * do, without doing it. Needs `canPruneAsset` on the project.
+       * @param {string} projectId - The project ID.
+       * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+       * @returns {Promise<AssetPrunePreview>} Each asset's eligibility, and the totals.
+       */
+      async previewPruneOriginals(projectId, selection) {
+        if (!projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/projects/${projectId}/original-pruning/preview`,
+          body: selection,
+          sendJWT: true
+        });
+      },
+      /**
+       * Requests prunes for every asset in the selection that can be pruned.
+       * Needs `canPruneAsset` on the project.
+       * @param {string} projectId - The project ID.
+       * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+       * @returns {Promise<AssetPruneRequestResult>} The requested and skipped assets.
+       */
+      async pruneOriginals(projectId, selection) {
+        if (!projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/projects/${projectId}/original-pruning/prune`,
+          body: selection,
+          sendJWT: true
+        });
+      },
+      /**
+       * Cancels every waiting prune in the selection. Needs `canPruneAsset` on the project.
+       * @param {string} projectId - The project ID.
+       * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+       * @returns {Promise<AssetPruneCancelResult>} The cancelled assets, and those with nothing waiting.
+       */
+      async cancelPruneOriginals(projectId, selection) {
+        if (!projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/projects/${projectId}/original-pruning/cancel`,
+          body: selection,
+          sendJWT: true
+        });
+      },
+      /**
+       * The project's pruning policy and what it has done. Needs `canManageProjectSettings`.
+       * @param {string} projectId - The project ID.
+       * @returns {Promise<ProjectPruningSummary>} The summary.
+       */
+      async getOriginalPruningSummary(projectId) {
+        if (!projectId) throw new Error("projectId is required.");
+        return client._request({
+          method: "GET",
+          endpoint: `/v1/projects/${projectId}/original-pruning/summary`,
+          sendJWT: true
+        });
       }
     };
   }
@@ -6407,6 +6467,75 @@
         return client._request({
           method: "GET",
           endpoint: `/v1/assets/${assetId}/references`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Where an asset's original is, what the project's pruning policy will do
+       * with it, and whether it can be pruned by hand now. Needs `canGetAssetOriginal`.
+       * @param {string} assetId - The ID of the asset.
+       * @returns {Promise<AssetOriginalStatus>} The original's state.
+       */
+      async getOriginal(assetId) {
+        if (!assetId) throw new Error("assetId is required.");
+        return client._request({
+          method: "GET",
+          endpoint: `/v1/assets/${assetId}/original`,
+          sendJWT: true
+        });
+      },
+      /**
+       * The history of an asset's original, newest first. Needs `canGetAssetOriginal`.
+       * @param {string} assetId - The ID of the asset.
+       * @returns {Promise<{ results: AssetOriginalHistoryEntry[] }>} The history.
+       */
+      async getOriginalHistory(assetId) {
+        if (!assetId) throw new Error("assetId is required.");
+        return client._request({
+          method: "GET",
+          endpoint: `/v1/assets/${assetId}/original/history`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Requests that an asset's original be pruned once the undo window has
+       * passed (`pruneAfter`). Needs `canPruneAsset`.
+       * @param {string} assetId - The ID of the asset.
+       * @returns {Promise<Asset>} The asset, now waiting to be pruned.
+       */
+      async pruneOriginal(assetId) {
+        if (!assetId) throw new Error("assetId is required.");
+        return client._request({
+          method: "POST",
+          endpoint: `/v1/assets/${assetId}/original/prune`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Cancels a requested prune before it runs. Needs `canPruneAsset`.
+       * @param {string} assetId - The ID of the asset.
+       * @returns {Promise<Asset>} The asset, with its original back to `stored`.
+       */
+      async cancelPruneOriginal(assetId) {
+        if (!assetId) throw new Error("assetId is required.");
+        return client._request({
+          method: "DELETE",
+          endpoint: `/v1/assets/${assetId}/original/prune`,
+          sendJWT: true
+        });
+      },
+      /**
+       * Exempts an asset from pruning, or lifts the exemption. Needs `canPruneAsset`.
+       * @param {string} assetId - The ID of the asset.
+       * @param {boolean} keepOriginal - True to exempt the asset.
+       * @returns {Promise<Asset>} The asset.
+       */
+      async setKeepOriginal(assetId, keepOriginal) {
+        if (!assetId) throw new Error("assetId is required.");
+        return client._request({
+          method: "PUT",
+          endpoint: `/v1/assets/${assetId}/original/keep`,
+          body: { keepOriginal },
           sendJWT: true
         });
       },
@@ -8622,11 +8751,12 @@
         });
       },
       /**
-       * List active starter-package "plans" available to the caller,
-       * scoped by user-level restrictions but NOT bound to a workspace.
-       * Used by the post-signup plan-selection overlay before any
-       * workspace exists.
-       * @returns {Promise<ProductResponse[]>} Active starter-package plans.
+       * The base-plan catalogue. Works signed out: without a session it is the
+       * public catalogue (active, unrestricted plans). With one it also has the
+       * promo plans restricted to the caller (`restricted: true`) and leaves out
+       * a Demo they've already used. Plans carry only their public fields —
+       * no `restrictTo`, `notes` or payment-provider ids.
+       * @returns {Promise<ProductResponse[]>} Base plans available to the caller.
        */
       async listPlans() {
         return client._request({
@@ -11589,10 +11719,10 @@
 
   // src/version.ts
   var SDK_VERSION = {
-    version: "1.4.6",
-    buildTimestamp: "2026-10-30T09:37:39.703Z",
-    buildHash: "591a47b7ee697e4b2fd756a50b5b647e",
-    gitCommit: "e46370d",
+    version: "1.4.7",
+    buildTimestamp: "2026-11-11T06:13:04.718Z",
+    buildHash: "18b104b8bee310a1409fe4e5ca11eb33",
+    gitCommit: "dccf5ca",
     dirty: false
   };
 

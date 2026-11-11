@@ -23,7 +23,13 @@ export interface DocumentViewUrlResponse {
 
 import NuramaClient from '../NuramaClient.js';
 import { uploadSessionManager } from '../utils/uploadSessionManager.js';
-import { type Asset, type File, type AssetReferences } from '@nurama/types'; // Import Asset and File types
+import {
+  type Asset,
+  type File,
+  type AssetReferences,
+  type AssetOriginalStatus,
+  type AssetOriginalHistoryEntry,
+} from '@nurama/types';
 
 // --- Request Body Interfaces ---
 export interface UpdateAssetData {
@@ -296,6 +302,80 @@ export default function createAssetMethods(client: NuramaClient) {
       return client._request<AssetReferences>({
         method: 'GET',
         endpoint: `/v1/assets/${assetId}/references`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Where an asset's original is, what the project's pruning policy will do
+     * with it, and whether it can be pruned by hand now. Needs `canGetAssetOriginal`.
+     * @param {string} assetId - The ID of the asset.
+     * @returns {Promise<AssetOriginalStatus>} The original's state.
+     */
+    async getOriginal(assetId: string): Promise<AssetOriginalStatus> {
+      if (!assetId) throw new Error('assetId is required.');
+      return client._request<AssetOriginalStatus>({
+        method: 'GET',
+        endpoint: `/v1/assets/${assetId}/original`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * The history of an asset's original, newest first. Needs `canGetAssetOriginal`.
+     * @param {string} assetId - The ID of the asset.
+     * @returns {Promise<{ results: AssetOriginalHistoryEntry[] }>} The history.
+     */
+    async getOriginalHistory(assetId: string): Promise<{ results: AssetOriginalHistoryEntry[] }> {
+      if (!assetId) throw new Error('assetId is required.');
+      return client._request<{ results: AssetOriginalHistoryEntry[] }>({
+        method: 'GET',
+        endpoint: `/v1/assets/${assetId}/original/history`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Requests that an asset's original be pruned once the undo window has
+     * passed (`pruneAfter`). Needs `canPruneAsset`.
+     * @param {string} assetId - The ID of the asset.
+     * @returns {Promise<Asset>} The asset, now waiting to be pruned.
+     */
+    async pruneOriginal(assetId: string): Promise<Asset> {
+      if (!assetId) throw new Error('assetId is required.');
+      return client._request<Asset>({
+        method: 'POST',
+        endpoint: `/v1/assets/${assetId}/original/prune`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Cancels a requested prune before it runs. Needs `canPruneAsset`.
+     * @param {string} assetId - The ID of the asset.
+     * @returns {Promise<Asset>} The asset, with its original back to `stored`.
+     */
+    async cancelPruneOriginal(assetId: string): Promise<Asset> {
+      if (!assetId) throw new Error('assetId is required.');
+      return client._request<Asset>({
+        method: 'DELETE',
+        endpoint: `/v1/assets/${assetId}/original/prune`,
+        sendJWT: true,
+      });
+    },
+
+    /**
+     * Exempts an asset from pruning, or lifts the exemption. Needs `canPruneAsset`.
+     * @param {string} assetId - The ID of the asset.
+     * @param {boolean} keepOriginal - True to exempt the asset.
+     * @returns {Promise<Asset>} The asset.
+     */
+    async setKeepOriginal(assetId: string, keepOriginal: boolean): Promise<Asset> {
+      if (!assetId) throw new Error('assetId is required.');
+      return client._request<Asset>({
+        method: 'PUT',
+        endpoint: `/v1/assets/${assetId}/original/keep`,
+        body: { keepOriginal },
         sendJWT: true,
       });
     },

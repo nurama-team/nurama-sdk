@@ -1,6 +1,6 @@
 import NuramaClient from '../NuramaClient.js';
 import { type Project, type Asset, type Folder, type Chat, type ChatMessage, type ChatSubmission, // Correct type name
-type PaginatedResult, type CursorPaginatedResult, type PublicAssetResponse, type PublicChatMessagesResponse, type CreatePublicChatMessageRequest, type CreatePublicAssetChatMessageResponse, type SearchProjectParams, type SearchResponse, type DeleteImpact, type FeedEvent, type FeedVisibility, type ListFeedEventsParams, type CursorPaginatedFeedEvents, type ReadState } from '@nurama/types';
+type PaginatedResult, type CursorPaginatedResult, type PublicAssetResponse, type PublicChatMessagesResponse, type CreatePublicChatMessageRequest, type CreatePublicAssetChatMessageResponse, type SearchProjectParams, type SearchResponse, type DeleteImpact, type FeedEvent, type FeedVisibility, type ListFeedEventsParams, type CursorPaginatedFeedEvents, type ReadState, type AssetPruneSelection, type AssetPrunePreview, type AssetPruneRequestResult, type AssetPruneCancelResult, type ProjectPruningSummary } from '@nurama/types';
 export type PaginatedResponse<T> = (PaginatedResult | CursorPaginatedResult) & {
     results?: T[];
 };
@@ -850,5 +850,34 @@ export default function createProjectMethods(client: NuramaClient): {
         eventType?: "play_started" | "play_completed" | "download" | "embed_resolved";
         limit?: number;
     }): Promise<ProjectTopAccessActivityResponse>;
+    /**
+     * What pruning the originals of a selection of the project's assets would
+     * do, without doing it. Needs `canPruneAsset` on the project.
+     * @param {string} projectId - The project ID.
+     * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+     * @returns {Promise<AssetPrunePreview>} Each asset's eligibility, and the totals.
+     */
+    previewPruneOriginals(projectId: string, selection: AssetPruneSelection): Promise<AssetPrunePreview>;
+    /**
+     * Requests prunes for every asset in the selection that can be pruned.
+     * Needs `canPruneAsset` on the project.
+     * @param {string} projectId - The project ID.
+     * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+     * @returns {Promise<AssetPruneRequestResult>} The requested and skipped assets.
+     */
+    pruneOriginals(projectId: string, selection: AssetPruneSelection): Promise<AssetPruneRequestResult>;
+    /**
+     * Cancels every waiting prune in the selection. Needs `canPruneAsset` on the project.
+     * @param {string} projectId - The project ID.
+     * @param {AssetPruneSelection} selection - Asset ids, creator-tree paths, or both.
+     * @returns {Promise<AssetPruneCancelResult>} The cancelled assets, and those with nothing waiting.
+     */
+    cancelPruneOriginals(projectId: string, selection: AssetPruneSelection): Promise<AssetPruneCancelResult>;
+    /**
+     * The project's pruning policy and what it has done. Needs `canManageProjectSettings`.
+     * @param {string} projectId - The project ID.
+     * @returns {Promise<ProjectPruningSummary>} The summary.
+     */
+    getOriginalPruningSummary(projectId: string): Promise<ProjectPruningSummary>;
 };
 //# sourceMappingURL=project.d.ts.map

@@ -13,6 +13,27 @@ export interface ProjectSettings {
     allowAiFeatures?: boolean | null;
     aiPolishEnabled?: boolean | null;
     aiCustomPreprompt?: string | null;
+    /**
+     * Automatic pruning of originals. Null (or absent) leaves it off. Set per
+     * project; there is no workspace-wide policy.
+     */
+    originalPruning?: OriginalPruningPolicy | null;
+}
+/**
+ * A project's automatic pruning of originals: deleting the uploaded file once
+ * post-processing has finished, keeping every processed version. Omitted
+ * fields take their defaults.
+ */
+export interface OriginalPruningPolicy {
+    enabled: boolean;
+    /** Media types the policy prunes. Defaults to every prunable type but documents. */
+    mediaTypes?: Array<'video' | 'audio' | 'image' | '3d' | 'document'>;
+    /** Days after post-processing finishes before an asset is pruned (0–90, default 7). */
+    graceDays?: number;
+    /** Leave alone assets reviewers, public links or public collections can see (default true). */
+    skipPublished?: boolean;
+    /** Leave alone assets included in a submission (default true). */
+    skipInSubmissions?: boolean;
 }
 /**
  * Represents a project within a workspace.

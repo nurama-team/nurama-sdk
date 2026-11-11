@@ -106,14 +106,63 @@ export interface Asset {
      */
     keyPath: string;
     /**
-     * MD5 checksum of original file.
-     * @format md5
+     * Client-supplied fingerprint of the original, used to spot duplicate uploads.
+     * The web and mobile apps send a SHA-256 of the whole file up to 4 MB and of
+     * its first 2 MB, last 2 MB and size beyond that; older SDK callers sent MD5.
+     * It is not a full-file hash — see `contentSha256`.
      */
     checksum: string;
     /**
-     * The algorithm used for computing the checksum.
+     * The algorithm used for computing the checksum, when recorded.
      */
-    checksumAlgorithm?: 'md5';
+    checksumAlgorithm?: string | null;
+    /**
+     * Full-file SHA-256 of the original, computed server-side once the upload
+     * has been read. Null until then.
+     */
+    contentSha256?: string | null;
+    /**
+     * The file name the original was uploaded under. Unlike `name` it does not
+     * change when the asset is renamed. Best effort for assets uploaded before it
+     * was recorded.
+     */
+    originalName?: string | null;
+    /**
+     * Lower-case extension of the original file, without the dot.
+     */
+    originalExtension?: string | null;
+    /**
+     * Size of the original file in bytes. Unlike `sizeInBytes`, which totals
+     * every file the asset holds, this is the upload alone.
+     */
+    originalSizeInBytes?: number | null;
+    /**
+     * Where the original file is: `stored` while it is in storage, otherwise
+     * pruned or in transition.
+     */
+    originalState?: 'stored' | 'pruneRequested' | 'pruning' | 'pruned' | 'restoring' | 'awaitingConfirmation';
+    /**
+     * When post-processing finished (Unix ms), or null while it is running or
+     * has not run.
+     */
+    processingCompletedAt?: number | null;
+    /** True when the asset is exempt from pruning. */
+    keepOriginal?: boolean;
+    /**
+     * When a requested prune runs (Unix ms): the end of the undo window, or the
+     * next retry after a failed attempt.
+     */
+    pruneAfter?: number | null;
+    /** Who requested the waiting prune; null for the project policy. */
+    pruneRequestedById?: string | null;
+    /** Whether a person or the project policy asked for the prune. */
+    pruneReason?: 'manual' | 'policy' | null;
+    /** When the original was pruned (Unix ms). */
+    prunedAt?: number | null;
+    /** Failed prune attempts since the last success or request. */
+    pruneAttempts?: number;
+    /** Why the last prune attempt failed, or why the policy set the asset aside. */
+    pruneError?: string | null;
     /**
      * The name of the asset used on the platform.
      */
@@ -390,6 +439,11 @@ export interface AssetReference {
     /** Human-readable, e.g. "Submission / Round 2". */
     label: string;
     createdAt?: string;
+    /**
+     * Public references only: whether the release is live (`active`) or has been
+     * `disabled`, has `expired` or hit an `error`. Null when the release is gone.
+     */
+    releaseStatus?: 'active' | 'disabled' | 'expired' | 'error' | null;
 }
 /**
  * One reference a pending delete would remove, with the asset it belongs to —
@@ -432,10 +486,152 @@ export interface AssetPrimaryReference {
 export interface AssetReferences {
     assetId: string;
     assetName: string;
+    /** Whether the asset has ever been in a public release; stays true after it leaves. */
+    everPublic: boolean;
     primaryRoot: string;
     primary: AssetPrimaryReference[];
     secondary: Record<AssetReferenceKind, AssetReference[]>;
     /** Only the kinds with at least one reference appear. */
     counts: Partial<Record<AssetReferenceKind, number>>;
     secondaryCount: number;
+}
+/**
+ * Whether an asset's original can be pruned, and what pruning would cost.
+ * `reasons` block the prune; `warnings` never do.
+ */
+export interface AssetPruneEligibility {
+    eligible: boolean;
+    /**
+     * `notProjectMedia`, `unsupportedMediaType`, `notActive`,
+     * `processingNotFinished`, `processingFailed`, `renditionsPending`,
+     * `documentNotProcessed`, `missingOutputs`, `keepOriginal`, `noOriginal`,
+     * `originalNotStored`; for the policy only, `policyDisabled`,
+     * `mediaTypeExcluded`, `published`, `inSubmission`.
+     */
+    reasons: string[];
+    /**
+     * `noDownloadableVersion`, `reducedResolution`, `compressedModelOnly`,
+     * `documentPreviewOnly`, `sharedElsewhere`, `cannotReprocess`.
+     */
+    warnings: string[];
+    /** Where else the asset can be seen; every one of these loses the original too. */
+    references: {
+        reviewers: boolean;
+        publicLinks: boolean;
+        publicCollections: number;
+        submissions: number;
+    };
+    /** Storage the prune would free. */
+    bytesReclaimed: number;
+}
+/** Everything about an asset's original, from `GET /v1/assets/:assetId/original`. */
+export interface AssetOriginalStatus {
+    assetId: string;
+    originalState: NonNullable<Asset['originalState']>;
+    keepOriginal: boolean;
+    pruneAfter: number | null;
+    pruneReason: 'manual' | 'policy' | null;
+    prunedAt: number | null;
+    pruneAttempts: number;
+    pruneError: string | null;
+    contentSha256: string | null;
+    originalName: string | null;
+    originalExtension: string | null;
+    originalSizeInBytes: number | null;
+    processingCompletedAt: number | null;
+    eligibility: AssetPruneEligibility;
+    policy: {
+        enabled: boolean;
+        mediaTypes: string[];
+        graceDays: number;
+        skipPublished: boolean;
+        skipInSubmissions: boolean;
+        /** Whether the policy covers this asset at all. */
+        appliesToAsset: boolean;
+        /**
+         * Why an enabled policy leaves the asset alone: `mediaTypeExcluded`,
+         * `published` (shared with reviewers or publicly), `inSubmission`. Empty
+         * when the policy is off or covers the asset. Optional for older servers.
+         */
+        skippedBecause?: Array<'mediaTypeExcluded' | 'published' | 'inSubmission'>;
+        /** When the policy will consider the asset (Unix ms). */
+        eligibleFrom: number | null;
+    };
+}
+/** One event in an asset's original history. */
+export interface AssetOriginalHistoryEntry {
+    id: string;
+    assetId: string;
+    action: 'hashed' | 'pruneRequested' | 'pruneCancelled' | 'pruned' | 'pruneFailed' | 'keepOriginalSet' | 'keepOriginalCleared';
+    /** Who acted; null when the system did. */
+    actor: {
+        id: string;
+        displayName: string | null;
+    } | null;
+    sha256: string | null;
+    sizeInBytes: number | null;
+    fileName: string | null;
+    relatedSha256: string | null;
+    relatedAssetId: string | null;
+    note: string | null;
+    createdAt: number;
+}
+/**
+ * Assets a bulk prune request acts on: ids, paths in the project's creator
+ * tree (a folder includes everything inside it), or both.
+ */
+export interface AssetPruneSelection {
+    assetIds?: string[];
+    itemPaths?: string[];
+}
+/** What pruning a selection would do. */
+export interface AssetPrunePreview {
+    totals: {
+        selected: number;
+        eligible: number;
+        ineligible: number;
+        bytesReclaimed: number;
+    };
+    assets: Array<AssetPruneEligibility & {
+        assetId: string;
+        name: string;
+        mediaType: string;
+        originalState: string;
+    }>;
+    notFound: string[];
+}
+/** Which prunes a bulk request scheduled. */
+export interface AssetPruneRequestResult {
+    requested: string[];
+    skipped: Array<{
+        assetId: string;
+        reasons: string[];
+    }>;
+    /** When the requested prunes run (Unix ms). */
+    pruneAfter: number;
+    notFound: string[];
+}
+/** Which prunes a bulk cancel stopped. */
+export interface AssetPruneCancelResult {
+    cancelled: string[];
+    notCancelled: string[];
+    notFound: string[];
+}
+/** Pruning in a project at a glance. */
+export interface ProjectPruningSummary {
+    policy: {
+        enabled: boolean;
+        mediaTypes: string[];
+        graceDays: number;
+        skipPublished: boolean;
+        skipInSubmissions: boolean;
+    };
+    /** Active media assets by `originalState`. */
+    counts: Record<string, number>;
+    /** Assets exempt from pruning. */
+    keepOriginal: number;
+    /** Size of the originals pruned so far. */
+    prunedBytes: number;
+    /** Assets the policy would prune on its next runs. */
+    policyCandidates: number;
 }

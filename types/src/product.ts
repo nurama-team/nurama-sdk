@@ -121,6 +121,31 @@ export interface Product {
    */
   status: 'active' | 'inactive';
   /**
+   * True for a promo plan restricted to particular users or workspaces. The
+   * plan catalogue (`GET /v1/products/plans`) sends this instead of
+   * `restrictTo`, which stays server-side.
+   */
+  restricted?: boolean;
+  /**
+   * Nu Credits granted on top, once, when the plan is bought annually.
+   * Plan catalogue only.
+   */
+  annualBonusCredits?: number;
+  /**
+   * Whether `credits` is granted each billing cycle (`monthly`) or once
+   * (`oneTime`).
+   */
+  grantMode?: 'monthly' | 'oneTime';
+  /**
+   * Price of one creator seat beyond `seats`, per currency and period. Empty
+   * when the plan sells no extra seats. Plan catalogue only.
+   */
+  extraSeatPrices?: ProductPrice[];
+  /** Convo minutes included. */
+  convoMinutes?: number;
+  /** Support tier the plan includes. */
+  supportLevel?: 'standard' | 'priority' | 'dedicated';
+  /**
    * Product creation timestamp.
    * @format date-time
    */

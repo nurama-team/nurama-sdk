@@ -35,11 +35,12 @@ export default function createProductMethods(client: NuramaClient) {
     },
 
     /**
-     * List active starter-package "plans" available to the caller,
-     * scoped by user-level restrictions but NOT bound to a workspace.
-     * Used by the post-signup plan-selection overlay before any
-     * workspace exists.
-     * @returns {Promise<ProductResponse[]>} Active starter-package plans.
+     * The base-plan catalogue. Works signed out: without a session it is the
+     * public catalogue (active, unrestricted plans). With one it also has the
+     * promo plans restricted to the caller (`restricted: true`) and leaves out
+     * a Demo they've already used. Plans carry only their public fields —
+     * no `restrictTo`, `notes` or payment-provider ids.
+     * @returns {Promise<ProductResponse[]>} Base plans available to the caller.
      */
     async listPlans(): Promise<ProductResponse[]> {
       return client._request<ProductResponse[]>({

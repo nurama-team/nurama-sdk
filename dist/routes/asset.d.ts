@@ -21,7 +21,7 @@ export interface DocumentViewUrlResponse {
     originalPageCount: number;
 }
 import NuramaClient from '../NuramaClient.js';
-import { type Asset, type File, type AssetReferences } from '@nurama/types';
+import { type Asset, type File, type AssetReferences, type AssetOriginalStatus, type AssetOriginalHistoryEntry } from '@nurama/types';
 export interface UpdateAssetData {
     name?: string;
     meta?: Record<string, any>;
@@ -176,6 +176,41 @@ export default function createAssetMethods(client: NuramaClient): {
      * @returns {Promise<AssetReferences>} The asset's references.
      */
     getAssetReferences(assetId: string): Promise<AssetReferences>;
+    /**
+     * Where an asset's original is, what the project's pruning policy will do
+     * with it, and whether it can be pruned by hand now. Needs `canGetAssetOriginal`.
+     * @param {string} assetId - The ID of the asset.
+     * @returns {Promise<AssetOriginalStatus>} The original's state.
+     */
+    getOriginal(assetId: string): Promise<AssetOriginalStatus>;
+    /**
+     * The history of an asset's original, newest first. Needs `canGetAssetOriginal`.
+     * @param {string} assetId - The ID of the asset.
+     * @returns {Promise<{ results: AssetOriginalHistoryEntry[] }>} The history.
+     */
+    getOriginalHistory(assetId: string): Promise<{
+        results: AssetOriginalHistoryEntry[];
+    }>;
+    /**
+     * Requests that an asset's original be pruned once the undo window has
+     * passed (`pruneAfter`). Needs `canPruneAsset`.
+     * @param {string} assetId - The ID of the asset.
+     * @returns {Promise<Asset>} The asset, now waiting to be pruned.
+     */
+    pruneOriginal(assetId: string): Promise<Asset>;
+    /**
+     * Cancels a requested prune before it runs. Needs `canPruneAsset`.
+     * @param {string} assetId - The ID of the asset.
+     * @returns {Promise<Asset>} The asset, with its original back to `stored`.
+     */
+    cancelPruneOriginal(assetId: string): Promise<Asset>;
+    /**
+     * Exempts an asset from pruning, or lifts the exemption. Needs `canPruneAsset`.
+     * @param {string} assetId - The ID of the asset.
+     * @param {boolean} keepOriginal - True to exempt the asset.
+     * @returns {Promise<Asset>} The asset.
+     */
+    setKeepOriginal(assetId: string, keepOriginal: boolean): Promise<Asset>;
     /**
      * Updates an asset.
      * @param {string} assetId - The ID of the asset to update.
