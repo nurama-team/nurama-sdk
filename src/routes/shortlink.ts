@@ -39,7 +39,7 @@ export interface PublicDownloadUrlResponse {
 
 export interface PublicEmbedFilesResponse {
   fileName: string;
-  mediaType: 'video' | 'audio' | 'image' | 'file' | string;
+  mediaType: 'video' | 'audio' | 'image' | '3d' | 'document' | 'file' | string;
   /**
    * Mode of the underlying public link: 'embed' (no download) or 'embed-download'
    * (download allowed alongside embed). 'download' never appears — that mode

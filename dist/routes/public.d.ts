@@ -1,5 +1,6 @@
 import NuramaClient from '../NuramaClient.js';
 import { type ResolvePublicDownloadResponse, type PublicDownloadUrlResponse, type PublicEmbedFilesResponse } from './shortlink.js';
+import { type DocumentViewUrlResponse } from './asset.js';
 import { FileSystem, CursorPaginatedResult, DownloadSignedUrlData, ObjectId, Chat, ChatMessage, CreatePublicChatMessageRequest, CreatePublicAssetChatMessageResponse, GetPublicChatMessagesParams, PublicChatMessagesResponse, PublicAssetResponse } from '@nurama/types';
 /**
  * Base pagination parameters
@@ -254,6 +255,16 @@ export default function createPublicMethods(client: NuramaClient): {
      * @throws {Error} 'token is required.' when `token` is falsy.
      */
     getPublicEmbedFiles(token: string): Promise<PublicEmbedFilesResponse>;
+    /**
+     * Get a short-lived signed URL for a shared document's viewer PDF (the
+     * page-capped `media` derivative, never the original), for the share page
+     * and the embed. Public endpoint; fails with 403 for download-only links
+     * and 400 for anything but a document.
+     * @param {string} token - The public asset-link token.
+     * @returns {Promise<DocumentViewUrlResponse>} Signed URL, expiry and page metadata.
+     * @throws {Error} 'token is required.' when `token` is falsy.
+     */
+    getPublicDocumentViewUrl(token: string): Promise<DocumentViewUrlResponse>;
     /**
      * Record a play event from the embed player for a public asset link.
      * Public endpoint; no authentication. The API responds 204.

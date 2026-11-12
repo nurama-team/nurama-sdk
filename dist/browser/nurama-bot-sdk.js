@@ -10023,6 +10023,23 @@
         });
       },
       /**
+       * Get a short-lived signed URL for a shared document's viewer PDF (the
+       * page-capped `media` derivative, never the original), for the share page
+       * and the embed. Public endpoint; fails with 403 for download-only links
+       * and 400 for anything but a document.
+       * @param {string} token - The public asset-link token.
+       * @returns {Promise<DocumentViewUrlResponse>} Signed URL, expiry and page metadata.
+       * @throws {Error} 'token is required.' when `token` is falsy.
+       */
+      async getPublicDocumentViewUrl(token) {
+        if (!token) throw new Error("token is required.");
+        return client._request({
+          method: "GET",
+          endpoint: `/v1/public-download/${token}/document-view`,
+          sendJWT: false
+        });
+      },
+      /**
        * Record a play event from the embed player for a public asset link.
        * Public endpoint; no authentication. The API responds 204.
        * @param {string} token - The public asset-link token.
@@ -11719,10 +11736,10 @@
 
   // src/version.ts
   var SDK_VERSION = {
-    version: "1.4.7",
-    buildTimestamp: "2026-11-11T06:13:04.718Z",
-    buildHash: "18b104b8bee310a1409fe4e5ca11eb33",
-    gitCommit: "dccf5ca",
+    version: "1.4.8",
+    buildTimestamp: "2026-11-12T10:32:37.215Z",
+    buildHash: "a8108402a464d65604ac79f6a4917519",
+    gitCommit: "808a53a",
     dirty: false
   };
 

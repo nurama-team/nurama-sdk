@@ -390,6 +390,24 @@ export default function createPublicMethods(client) {
             });
         },
         /**
+         * Get a short-lived signed URL for a shared document's viewer PDF (the
+         * page-capped `media` derivative, never the original), for the share page
+         * and the embed. Public endpoint; fails with 403 for download-only links
+         * and 400 for anything but a document.
+         * @param {string} token - The public asset-link token.
+         * @returns {Promise<DocumentViewUrlResponse>} Signed URL, expiry and page metadata.
+         * @throws {Error} 'token is required.' when `token` is falsy.
+         */
+        async getPublicDocumentViewUrl(token) {
+            if (!token)
+                throw new Error('token is required.');
+            return client._request({
+                method: 'GET',
+                endpoint: `/v1/public-download/${token}/document-view`,
+                sendJWT: false,
+            });
+        },
+        /**
          * Record a play event from the embed player for a public asset link.
          * Public endpoint; no authentication. The API responds 204.
          * @param {string} token - The public asset-link token.
