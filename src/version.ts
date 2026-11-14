@@ -14,9 +14,9 @@ export interface SDKVersionInfo {
 }
 
 export const SDK_VERSION: SDKVersionInfo = {
-  version: '1.4.8',
-  buildTimestamp: '2026-11-12T10:32:37.215Z',
-  buildHash: 'a8108402a464d65604ac79f6a4917519',
-  gitCommit: '808a53a',
+  version: '1.4.9',
+  buildTimestamp: '2026-11-14T09:31:13.191Z',
+  buildHash: 'd53e7c8d0530a2bc3018e7c9c60d06b0',
+  gitCommit: '0dd0eff',
   dirty: false,
 };

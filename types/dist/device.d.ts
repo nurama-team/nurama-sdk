@@ -44,6 +44,8 @@ export interface Device {
     voipPushToken?: string | null;
     /** App bundle identifier (e.g., com.nurama.mobile.beta) */
     bundleId?: string | null;
+    /** Stable id of the install this device row stands for, when the client sends one */
+    installationId?: string | null;
     /** Optional device metadata */
     deviceInfo?: DeviceInfo;
     /** Device status */
@@ -69,6 +71,12 @@ export interface RegisterDeviceBody {
     voipPushToken?: string;
     /** App bundle identifier (e.g., com.nurama.mobile.beta) */
     bundleId?: string;
+    /**
+     * A random id the client generates once and keeps for the life of the
+     * install (8–100 of `A-Z a-z 0-9 _ -`). A new push token from the same
+     * install updates that device instead of registering another.
+     */
+    installationId?: string;
     /** Optional device metadata */
     deviceInfo?: DeviceInfo;
 }

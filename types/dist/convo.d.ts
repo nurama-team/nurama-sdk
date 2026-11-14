@@ -108,9 +108,13 @@ export interface StartConvoRequest {
     recordingEnabled?: boolean;
     transcriptionEnabled?: boolean;
 }
-export interface StartConvoResponse {
-    convo: Convo;
-}
+/**
+ * `POST /v1/convos` answers with the convo itself (not wrapped in `convo`)
+ * plus the starter's Daily meeting token.
+ */
+export type StartConvoResponse = Convo & {
+    meetingToken: string;
+};
 export interface UpdateConvoRequest {
     subject?: string;
     notes?: string;

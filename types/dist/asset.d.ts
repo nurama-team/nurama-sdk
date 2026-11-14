@@ -138,9 +138,10 @@ export interface Asset {
     originalSizeInBytes?: number | null;
     /**
      * Where the original file is: `stored` while it is in storage, otherwise
-     * pruned or in transition.
+     * pruned or in transition. `restoring`: a pruned original is being
+     * re-attached — uploaded, or verified against its recorded hash.
      */
-    originalState?: 'stored' | 'pruneRequested' | 'pruning' | 'pruned' | 'restoring' | 'awaitingConfirmation';
+    originalState?: 'stored' | 'pruneRequested' | 'pruning' | 'pruned' | 'restoring';
     /**
      * When post-processing finished (Unix ms), or null while it is running or
      * has not run.
@@ -163,6 +164,12 @@ export interface Asset {
     pruneAttempts?: number;
     /** Why the last prune attempt failed, or why the policy set the asset aside. */
     pruneError?: string | null;
+    /** While `restoring`, when the re-attach upload was started (Unix ms). */
+    reattachStartedAt?: number | null;
+    /** While `restoring`, who started the re-attach. */
+    reattachById?: string | null;
+    /** While `restoring`, the upload the file is arriving through; null once it is being verified. */
+    reattachUploadId?: string | null;
     /**
      * The name of the asset used on the platform.
      */
@@ -539,6 +546,12 @@ export interface AssetOriginalStatus {
     originalExtension: string | null;
     originalSizeInBytes: number | null;
     processingCompletedAt: number | null;
+    /** While `restoring`, how far the re-attach has got. Optional for older servers. */
+    reattach?: {
+        phase: 'uploading' | 'verifying';
+        startedAt: number | null;
+        startedById: string | null;
+    } | null;
     eligibility: AssetPruneEligibility;
     policy: {
         enabled: boolean;
@@ -562,7 +575,7 @@ export interface AssetOriginalStatus {
 export interface AssetOriginalHistoryEntry {
     id: string;
     assetId: string;
-    action: 'hashed' | 'pruneRequested' | 'pruneCancelled' | 'pruned' | 'pruneFailed' | 'keepOriginalSet' | 'keepOriginalCleared';
+    action: 'hashed' | 'pruneRequested' | 'pruneCancelled' | 'pruned' | 'pruneFailed' | 'keepOriginalSet' | 'keepOriginalCleared' | 'reattachStarted' | 'reattached' | 'reattachRejected' | 'reattachCancelled' | 'reattachFailed';
     /** Who acted; null when the system did. */
     actor: {
         id: string;
@@ -575,6 +588,19 @@ export interface AssetOriginalHistoryEntry {
     relatedAssetId: string | null;
     note: string | null;
     createdAt: number;
+}
+/** From `POST /v1/assets/:assetId/original/reattach`: the asset, now `restoring`, and where to upload. */
+export interface AssetOriginalReattachStart {
+    asset: Asset;
+    upload: {
+        uploadId: string;
+        key: string;
+        /** PUT part N of the file to `urls[N - 1]`. */
+        urls: string[];
+        /** When the links expire (Unix seconds). */
+        expires: number;
+        uploadChunkSizeInBytes: number;
+    };
 }
 /**
  * Assets a bulk prune request acts on: ids, paths in the project's creator
@@ -625,6 +651,7 @@ export interface ProjectPruningSummary {
         graceDays: number;
         skipPublished: boolean;
         skipInSubmissions: boolean;
+        reattachMatchingUploads: boolean;
     };
     /** Active media assets by `originalState`. */
     counts: Record<string, number>;

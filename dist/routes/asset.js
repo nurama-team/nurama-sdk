@@ -82,7 +82,7 @@ export default function createAssetMethods(client) {
             throw error;
         }
     }
-    return {
+    const methods = {
         /**
          * Retrieves a specific asset by its ID with optional chat data.
          * @param {string} assetId - The ID of the asset.
@@ -192,6 +192,92 @@ export default function createAssetMethods(client) {
                 body: { keepOriginal },
                 sendJWT: true,
             });
+        },
+        /**
+         * Starts re-attaching a pruned original. The size and the upload
+         * fingerprint (`checksum`) are checked against the original's first, so a
+         * wrong file is refused before it is sent (`assetOriginalMismatch`, 422).
+         * Needs `canReattachAssetOriginal`, or `canReattachOwnAssetOriginal` on an
+         * asset you created. Upload the parts with `multipartUpload`, then call
+         * `completeReattachOriginal` — or use `reattachOriginal`, which does all three.
+         * @param {string} assetId - The ID of the asset.
+         * @param {{ fileName: string, sizeInBytes: number, checksum?: string }} data - The file.
+         * @returns {Promise<AssetOriginalReattachStart>} The asset, now `restoring`, and the upload's links.
+         */
+        async startReattachOriginal(assetId, data) {
+            if (!assetId)
+                throw new Error('assetId is required.');
+            return client._request({
+                method: 'POST',
+                endpoint: `/v1/assets/${assetId}/original/reattach`,
+                body: data,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Completes a re-attach upload. The file is verified against the
+         * original's SHA-256 in the background: the asset comes back still
+         * `restoring`, and the outcome arrives as an `assetOriginalStateUpdate`
+         * (`stored` when it matched, `pruned` when it did not).
+         * @param {string} assetId - The ID of the asset.
+         * @param {{ key: string, uploadId: string, parts: { ETag: string, PartNumber: number }[] }} data - The completed upload.
+         * @returns {Promise<Asset>} The asset, `restoring` while the file is verified.
+         */
+        async completeReattachOriginal(assetId, data) {
+            if (!assetId)
+                throw new Error('assetId is required.');
+            return client._request({
+                method: 'POST',
+                endpoint: `/v1/assets/${assetId}/original/reattach/complete`,
+                body: { key: data.key, uploadId: data.uploadId, parts: data.parts },
+                sendJWT: true,
+            });
+        },
+        /**
+         * Cancels a re-attach whose upload has not completed; the original is pruned again.
+         * @param {string} assetId - The ID of the asset.
+         * @returns {Promise<Asset>} The asset.
+         */
+        async cancelReattachOriginal(assetId) {
+            if (!assetId)
+                throw new Error('assetId is required.');
+            return client._request({
+                method: 'DELETE',
+                endpoint: `/v1/assets/${assetId}/original/reattach`,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Re-attaches a pruned original from a file: starts the re-attach, uploads
+         * the file and completes it. Aborting (`abortSignal`) or a failed upload
+         * cancels the re-attach. Resolves once the upload is committed; the
+         * verification outcome arrives as an `assetOriginalStateUpdate`.
+         * @param {string} assetId - The ID of the asset.
+         * @param {File|Blob|Buffer|string} file - The file.
+         * @param {Object} options
+         * @param {string} options.fileName - The file's name.
+         * @param {number} options.sizeInBytes - Its size.
+         * @param {string} [options.checksum] - Its upload fingerprint, to refuse a wrong file before sending it.
+         * @param {MultipartUploadOptions['onProgress']} [options.onProgress]
+         * @param {AbortSignal} [options.abortSignal]
+         * @returns {Promise<Asset>} The asset, `restoring` while the file is verified.
+         */
+        async reattachOriginal(assetId, file, options) {
+            const { fileName, sizeInBytes, checksum, onProgress, abortSignal } = options;
+            const { upload } = await methods.startReattachOriginal(assetId, { fileName, sizeInBytes, checksum });
+            let uploaded;
+            try {
+                uploaded = await methods.multipartUpload(file, upload.urls, upload.key, upload.uploadId, {
+                    onProgress,
+                    abortSignal,
+                    maxRetries: 3,
+                });
+            }
+            catch (error) {
+                await methods.cancelReattachOriginal(assetId).catch(() => undefined);
+                throw error;
+            }
+            return methods.completeReattachOriginal(assetId, uploaded);
         },
         /**
          * Updates an asset.
@@ -918,5 +1004,6 @@ export default function createAssetMethods(client) {
             });
         },
     };
+    return methods;
 }
 //# sourceMappingURL=asset.js.map

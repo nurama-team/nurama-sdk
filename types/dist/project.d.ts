@@ -34,6 +34,12 @@ export interface OriginalPruningPolicy {
     skipPublished?: boolean;
     /** Leave alone assets included in a submission (default true). */
     skipInSubmissions?: boolean;
+    /**
+     * Take an ordinary upload that matches a pruned asset as a re-attach of its
+     * original, rather than a duplicate of the asset (default false). Applies
+     * whether or not automatic pruning is on.
+     */
+    reattachMatchingUploads?: boolean;
 }
 /**
  * Represents a project within a workspace.
