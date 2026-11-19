@@ -1,10 +1,11 @@
 {
   "name": "@nurama/types",
-  "version": "1.4.9",
+  "version": "1.4.10",
   "description": "Shared TypeScript types for the Nurama ecosystem",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
+    "clean": "rm -rf dist .turbo node_modules",
     "build": "tsc",
     "dev": "node scripts/dev.cjs",
     "test": "echo \"No tests for types package\" && exit 0"

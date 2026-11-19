@@ -326,9 +326,11 @@ class NuramaClient {
     } else if (this.browserMode && typeof window !== 'undefined' && window.fetch) {
       // In browser mode, wrap fetch to ensure proper binding to window
       effectiveFetch = (url: RequestInfo | URL, init?: RequestInit) => window.fetch(url, init);
-    } else {
-      // Fallback to default fetch
-      effectiveFetch = defaultFetch;
+    } else if (defaultFetch) {
+      // Wrap the global fetch rather than storing it: it is called below as
+      // `this.fetch(...)`, and a browser's fetch throws "Illegal invocation"
+      // when its receiver is anything but the global object.
+      effectiveFetch = (url: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(url, init);
     }
 
     // Validate fetch availability

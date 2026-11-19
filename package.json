@@ -1,6 +1,6 @@
 {
   "name": "@nurama/sdk",
-  "version": "1.4.9",
+  "version": "1.4.10",
   "description": "Provides API, web-socket, and additional utilities for interfacing with the Nurama platform.",
   "main": "dist/NuramaClient.js",
   "module": "dist/NuramaClient.js",
@@ -24,6 +24,7 @@
     "./bot-browser-min": "./dist/browser/nurama-bot-sdk.min.js"
   },
   "scripts": {
+    "clean": "rm -rf dist docs/reference coverage .turbo node_modules",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
@@ -49,7 +50,7 @@
   "author": "Nurama Team",
   "license": "Apache-2.0",
   "dependencies": {
-    "@nurama/types": "^1.4.9",
+    "@nurama/types": "^1.4.10",
     "jwt-decode": "^4.0.0",
     "socket.io-client": "^4.7.2"
   },

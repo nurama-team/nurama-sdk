@@ -465,7 +465,9 @@ export default function createAssetMethods(client) {
                 // Node.js environment with file path
                 else if (typeof file === 'string') {
                     // Handle Node.js file reading
-                    if (typeof process === 'undefined' || typeof require !== 'function') {
+                    // Detect Node by process.versions.node, not `require`: this package is
+                    // ESM, where `require` is undefined even though fs is available.
+                    if (typeof process === 'undefined' || !process.versions?.node) {
                         throw new Error('File path provided but environment does not support Node.js file system');
                     }
                     try {
