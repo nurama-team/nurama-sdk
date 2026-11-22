@@ -18,7 +18,8 @@ export type FeedEventKind =
   | 'submission'
   | 'public'
   | 'member'
-  | 'task';
+  | 'task'
+  | 'convo';
 
 export type FeedVisibility = 'creator' | 'reviewer';
 
@@ -163,6 +164,43 @@ export interface FeedEventTaskData {
   count: number;
 }
 
+/** A recording or transcript a convo card can offer for playback. */
+export interface FeedEventConvoArtifact {
+  dailyId: string;
+  status: 'pending' | 'stored' | 'failed';
+  durationSeconds?: number;
+  format?: 'vtt' | 'json' | 'txt';
+}
+
+/**
+ * `data` for convo cards: one call, written when it starts and refreshed in
+ * place as people join, when it ends, and when its recording arrives.
+ */
+export interface FeedEventConvoData {
+  /** Who started it. */
+  actor: PublicUser | null;
+  convoId: ObjectId;
+  convoType: 'video' | 'audio';
+  status: 'active' | 'completed' | 'cancelled';
+  subject: string | null;
+  chatId: ObjectId;
+  /** The convo's card in its chat, which tasks made from the convo are linked to. Missing on cards written before it was kept. */
+  messageId?: ObjectId | null;
+  chatType: string;
+  /** Epoch ms. */
+  startedAt: number | null;
+  endedAt: number | null;
+  durationMinutes: number | null;
+  /** Who is in it while it runs; everyone who was, once it has ended. */
+  participants: PublicUser[];
+  recordingEnabled: boolean;
+  transcriptionEnabled: boolean;
+  recordings: FeedEventConvoArtifact[];
+  transcripts: FeedEventConvoArtifact[];
+  /** The assistant's summary of the transcript, once one has been made. */
+  summary?: string | null;
+}
+
 interface FeedEventBase {
   id: ObjectId;
   projectId: ObjectId;
@@ -196,7 +234,8 @@ export type FeedEvent =
   | (FeedEventBase & { kind: 'submission'; data: FeedEventSubmissionData })
   | (FeedEventBase & { kind: 'public'; data: FeedEventPublicData })
   | (FeedEventBase & { kind: 'member'; data: FeedEventMemberData })
-  | (FeedEventBase & { kind: 'task'; data: FeedEventTaskData });
+  | (FeedEventBase & { kind: 'task'; data: FeedEventTaskData })
+  | (FeedEventBase & { kind: 'convo'; data: FeedEventConvoData });
 
 export interface ListFeedEventsParams {
   kinds?: FeedEventKind[];

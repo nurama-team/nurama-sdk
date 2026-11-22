@@ -109,6 +109,49 @@ export default function createAiMethods(client) {
             });
         },
         /**
+         * Summarise a convo from its transcript. The summary is kept on the convo,
+         * so a second call returns it without billing; pass `regenerate` for a new
+         * one. The convo must be in `workspaceId`, and the caller able to see it.
+         *
+         * @param data - The convo and the workspace it is in.
+         * @returns The summary, and whether it was newly made.
+         */
+        async summarizeConvo(data) {
+            if (!data?.workspaceId)
+                throw new Error('workspaceId is required.');
+            if (!data?.convoId)
+                throw new Error('convoId is required.');
+            return client._request({
+                endpoint: '/v1/ai/convo-summary',
+                method: 'POST',
+                body: data,
+                sendJWT: true,
+            });
+        },
+        /**
+         * Suggest board tasks from a convo's transcript. Proposals only — create
+         * the ones wanted with `task.bulkCreate`. Kept on the convo, so a second
+         * call returns them without billing; pass `regenerate` for new ones.
+         * Requires the Boards add-on as well as AI, and a convo in a project.
+         *
+         * @param data - The convo, and the workspace and project it is in.
+         * @returns The suggested tasks, and whether they were newly made.
+         */
+        async suggestConvoTasks(data) {
+            if (!data?.workspaceId)
+                throw new Error('workspaceId is required.');
+            if (!data?.projectId)
+                throw new Error('projectId is required.');
+            if (!data?.convoId)
+                throw new Error('convoId is required.');
+            return client._request({
+                endpoint: '/v1/ai/convo-tasks',
+                method: 'POST',
+                body: data,
+                sendJWT: true,
+            });
+        },
+        /**
          * Returns the catalogue of polish tones the platform supports. The FE
          * uses this to populate the tone dropdown without hard-coding the IDs.
          */

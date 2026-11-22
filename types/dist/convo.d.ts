@@ -1,3 +1,5 @@
+import { File } from './asset';
+import { PublicUser } from './user';
 /**
  * Convo (Video/Audio Chat) Types
  */
@@ -48,6 +50,89 @@ export interface ConvoTranscript {
     createdAt?: string;
     updatedAt?: string;
 }
+/** A board task Nu proposed from a convo's transcript. */
+/**
+ * A person or asset a convo's transcript talks about. Nu suggests them as the
+ * convo is summarised, and an admin who was on the call can add more; nobody
+ * is mentioned until the pending ones are sent. A `sent` one is a mention on
+ * the convo's own chat message, and can be taken back.
+ */
+export interface ConvoMention {
+    id: string;
+    kind: 'user' | 'asset';
+    /** The user's or asset's id. */
+    targetId: string;
+    /** Why it came up in the call. May be empty. */
+    reason: string;
+    /** Suggested by Nu, or added by hand. */
+    source: 'nu' | 'manual';
+    status: 'pending' | 'sent';
+    sentAt: number | null;
+    /** Present on a `user` mention. */
+    user?: PublicUser | null;
+    /** Present on an `asset` mention. */
+    asset?: {
+        id: string;
+        name: string;
+        mediaType?: string;
+    } | null;
+}
+export interface ConvoMentionsResponse {
+    mentions: ConvoMention[];
+    /** When Nu read the transcript for mentions; null when it has not. */
+    suggestedMentionsGeneratedAt: number | null;
+}
+export interface UpdateConvoMentionsRequest {
+    /** The pending list as it should now stand. Leaving one out removes it. */
+    mentions: {
+        kind: 'user' | 'asset';
+        targetId: string;
+        reason?: string;
+    }[];
+}
+export interface SendConvoMentionsResponse extends ConvoMentionsResponse {
+    /** The convo's own chat message, which now carries the mentions. */
+    message: unknown;
+}
+/** A task made from a convo, as a chat draws it on a card. */
+export interface ConvoTask {
+    id: string;
+    subject: string;
+    description?: string | null;
+    status?: string;
+    taskNumber?: number | null;
+    projectId?: string;
+    boardId?: string;
+    boardName?: string;
+    columnId?: string | null;
+    columnName?: string;
+    columnColor?: string | null;
+    assignedTo?: {
+        id: string;
+        firstName?: string;
+        lastName?: string;
+        displayName?: string;
+    };
+    tags?: {
+        id: string;
+        name: string;
+        color: string;
+    }[];
+}
+export interface ConvoTasksResponse {
+    /** Oldest first. */
+    tasks: ConvoTask[];
+}
+export interface ConvoSuggestedTask {
+    subject: string;
+    description: string;
+    /** The project member the transcript says the task is for, when it names one unambiguously. */
+    assignedToId?: string;
+    /** The board this kind of work belongs on, judged from the project's boards. */
+    boardId?: string;
+    /** A column on that board, when one clearly fits. */
+    columnId?: string;
+}
 export interface Convo {
     id: string;
     convoType: ConvoType;
@@ -78,6 +163,17 @@ export interface Convo {
      * without parsing WebVTT. Absent until a transcript is ingested.
      */
     transcriptText?: string | null;
+    /**
+     * Nu's summary of the transcript, once one has been made — on request, or on
+     * its own when the transcript arrived. Kept so it is made and billed once.
+     */
+    summary?: string | null;
+    summaryGeneratedAt?: string | number | null;
+    /** Board tasks Nu proposed from the transcript. Proposals only. */
+    suggestedTasks?: ConvoSuggestedTask[] | null;
+    suggestedTasksGeneratedAt?: string | number | null;
+    /** The name each person joined the call under, mapped to their user id. */
+    speakers?: Record<string, string>;
     startedById: string;
     startedBy?: string;
     activeParticipants: string[];
@@ -119,6 +215,11 @@ export interface UpdateConvoRequest {
     subject?: string;
     notes?: string;
 }
+export interface UpdateConvoSummaryResponse {
+    /** The summary as kept (Markdown); null when it was removed. */
+    summary: string | null;
+    summaryGeneratedAt: number | null;
+}
 export interface UpdateConvoResponse {
     convo: Convo;
 }
@@ -148,9 +249,77 @@ export interface GetScopeConvosResponse {
     totalPreviousResults?: number;
     totalNextResults?: number;
 }
+/** Where a convo is, as a list spanning several projects shows it. */
+export interface ConvoPlace {
+    id: string;
+    workspaceId?: string;
+    name: string;
+    slug: string | null;
+    color: string | null;
+    logo: {
+        id: string;
+        files: File[];
+    } | null;
+}
+/**
+ * A convo in the caller's cross-project list: running now, or ended within the
+ * last hour. `project` and `workspace` are null where the convo has none — a
+ * direct message, for one.
+ */
+export type MyConvo = Convo & {
+    project: ConvoPlace | null;
+    workspace: ConvoPlace | null;
+};
+export interface GetMyConvosResponse {
+    results: MyConvo[];
+}
+/**
+ * What is needed to play one of a convo's bundled artifacts.
+ *
+ * A recording carries a short-lived signed `url`; a transcript carries its
+ * `content` inline, cue timings included.
+ */
+export interface ConvoArtifactPlaybackResponse {
+    kind: 'recording' | 'transcript';
+    dailyId: string;
+    contentType: string;
+    /** Recording only. Signed URL to the video, valid for `expiresIn` seconds. */
+    url?: string;
+    /** Recording only. Lifetime of `url` in seconds. */
+    expiresIn?: number;
+    /** Recording only. */
+    durationSeconds?: number;
+    /**
+     * When the artifact began, in epoch seconds: a recording's first frame, a
+     * transcript's first moment of listening. The two rarely match, so a
+     * transcript's cue times are moved by `recording.startedAt - transcript.startedAt`
+     * to line up with the video. Null when the provider did not say.
+     */
+    startedAt?: number | null;
+    /** Transcript only. Format of `content`. */
+    format?: 'vtt' | 'json' | 'txt';
+    /** Transcript only. The stored transcript file as text. */
+    content?: string;
+    /**
+     * Transcript only. The name each person joined the call under, mapped to
+     * their user id — who each speaker label in `content` is. Empty for a convo
+     * recorded before labels were kept.
+     */
+    speakers?: Record<string, string>;
+    /** Transcript only. Everyone who was on the call, to draw each speaker from. */
+    participants?: PublicUser[];
+    /** Transcript only. The assistant's summary of it, once one has been made. */
+    summary?: string | null;
+}
 export interface PromoteConvoArtifactRequest {
     /** Optional display name for the resulting asset. */
     fileName?: string;
+    /**
+     * The project whose assets to add it to, for a convo that is in no project
+     * (a Team Chat). The caller must be able to add assets there. Ignored for a
+     * project convo, which always goes to its own project.
+     */
+    projectId?: string;
 }
 export interface PromoteConvoArtifactResponse {
     asset: unknown;

@@ -70,16 +70,52 @@ export interface GenerateTasksRequest {
      * the focal `messageText` is the actual instruction.
      */
     contextMessages?: TaskGenerationContextMessage[];
+    /**
+     * The side of the project the caller is working on: whose members a task
+     * may come back assigned to. Defaults to `creator`.
+     */
+    visibility?: 'creator' | 'reviewer';
 }
 export interface GeneratedTask {
     subject: string;
     description: string;
+    /** The project member the message says the task is for, when it names one unambiguously. */
+    assignedToId?: string;
+    /** The board this kind of work belongs on, judged from the project's boards. */
+    boardId?: string;
+    /** A column on that board, when one clearly fits. */
+    columnId?: string;
 }
 export interface GenerateTasksResponse {
     tasks: GeneratedTask[];
     billedCredits: number;
     balanceAfter: number;
     eventId: string | null;
+}
+/** Which convo, and the workspace (and project) it is in — who pays, and whose AI settings apply. */
+export interface ConvoAiRequest {
+    workspaceId: string;
+    /** Required for task suggestions; when given it must be the convo's own project. */
+    projectId?: string;
+    convoId: string;
+    /** Make a new one even though one is already kept on the convo. Billed again. */
+    regenerate?: boolean;
+}
+interface ConvoAiBilling {
+    /** False when a result already kept on the convo was returned; nothing was billed. */
+    generated: boolean;
+    billedCredits: number;
+    balanceAfter: number | null;
+}
+export interface SummarizeConvoResponse extends ConvoAiBilling {
+    summary: string;
+    /** Epoch ms. */
+    summaryGeneratedAt: number;
+}
+export interface SuggestConvoTasksResponse extends ConvoAiBilling {
+    tasks: GeneratedTask[];
+    /** Epoch ms. */
+    suggestedTasksGeneratedAt: number;
 }
 export interface ToneEntry {
     id: string;
@@ -247,6 +283,27 @@ export default function createAiMethods(client: NuramaClient): {
      */
     generateTasks(data: GenerateTasksRequest): Promise<GenerateTasksResponse>;
     /**
+     * Summarise a convo from its transcript. The summary is kept on the convo,
+     * so a second call returns it without billing; pass `regenerate` for a new
+     * one. The convo must be in `workspaceId`, and the caller able to see it.
+     *
+     * @param data - The convo and the workspace it is in.
+     * @returns The summary, and whether it was newly made.
+     */
+    summarizeConvo(data: ConvoAiRequest): Promise<SummarizeConvoResponse>;
+    /**
+     * Suggest board tasks from a convo's transcript. Proposals only — create
+     * the ones wanted with `task.bulkCreate`. Kept on the convo, so a second
+     * call returns them without billing; pass `regenerate` for new ones.
+     * Requires the Boards add-on as well as AI, and a convo in a project.
+     *
+     * @param data - The convo, and the workspace and project it is in.
+     * @returns The suggested tasks, and whether they were newly made.
+     */
+    suggestConvoTasks(data: ConvoAiRequest & {
+        projectId: string;
+    }): Promise<SuggestConvoTasksResponse>;
+    /**
      * Returns the catalogue of polish tones the platform supports. The FE
      * uses this to populate the tone dropdown without hard-coding the IDs.
      */
@@ -277,4 +334,5 @@ export default function createAiMethods(client: NuramaClient): {
      */
     createRevisionSourceUpload(data: CreateRevisionSourceUploadRequest): Promise<CreateRevisionSourceUploadResponse>;
 };
+export {};
 //# sourceMappingURL=ai.d.ts.map

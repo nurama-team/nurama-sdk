@@ -1,5 +1,5 @@
 import NuramaClient from '../NuramaClient.js';
-import { type StartConvoRequest, type StartConvoResponse, type GetConvoResponse, type JoinConvoResponse, type LeaveConvoResponse, type CompleteConvoResponse, type UpdateConvoRequest, type UpdateConvoResponse, type GetScopeConvosResponse, type PromoteConvoArtifactRequest, type PromoteConvoArtifactResponse, type Convo } from '@nurama/types';
+import { type StartConvoRequest, type StartConvoResponse, type GetConvoResponse, type JoinConvoResponse, type LeaveConvoResponse, type CompleteConvoResponse, type UpdateConvoRequest, type UpdateConvoResponse, type GetScopeConvosResponse, type ConvoArtifactPlaybackResponse, type GetMyConvosResponse, type PromoteConvoArtifactRequest, type PromoteConvoArtifactResponse, type ConvoMentionsResponse, type ConvoTasksResponse, type UpdateConvoSummaryResponse, type UpdateConvoMentionsRequest, type SendConvoMentionsResponse, type Convo } from '@nurama/types';
 /**
  * Defines convo (video/audio chat) related methods for the NuramaClient.
  * Handles starting, joining, and managing real-time conversations.
@@ -138,6 +138,78 @@ export default function createConvoMethods(client: NuramaClient): {
      *   limit: 20
      * });
      */
+    /**
+     * List the convos the caller can see across all their projects and Team
+     * Chats: the ones running now, and the ones that ended within the last
+     * hour. Running convos come first. Each carries its `project` and
+     * `workspace`.
+     * @returns {Promise<GetMyConvosResponse>} The caller's running and recently ended convos.
+     * @example
+     * const { results } = await client.convo.getMyConvos();
+     */
+    getMyConvos(): Promise<GetMyConvosResponse>;
+    /**
+     * Get what is needed to play a convo recording or show a transcript.
+     *
+     * A recording answers with a short-lived signed `url`; a transcript answers
+     * with its `content` inline, cue timings included. Open to anyone who can
+     * see the convo. Nothing is created — to keep an artifact as an asset, use
+     * `promoteConvoArtifact`.
+     * @param {string} convoId - The conversation ID.
+     * @param {'recording'|'transcript'} kind - Which artifact to play.
+     * @param {string} dailyId - The provider's id for the artifact, taken from
+     *   the convo's `recordings` / `transcripts` entries.
+     * @returns {Promise<ConvoArtifactPlaybackResponse>} The signed URL or the transcript text.
+     * @example
+     * const { url } = await client.convo.getConvoArtifactPlayback(convoId, 'recording', rec.dailyId);
+     */
+    getConvoArtifactPlayback(convoId: string, kind: "recording" | "transcript", dailyId: string): Promise<ConvoArtifactPlaybackResponse>;
+    /**
+     * The mentions kept on a convo: the people and assets Nu picked out of its
+     * transcript, and any added by hand. Only an admin of the convo's project
+     * who was on the call may read them.
+     * @param {string} convoId - The conversation ID.
+     * @returns {Promise<ConvoMentionsResponse>} Every mention, pending and sent.
+     */
+    getConvoMentions(convoId: string): Promise<ConvoMentionsResponse>;
+    /**
+     * Replace a convo's pending mentions with the given list — suggestions
+     * kept, plus anyone or anything added by hand. Sent mentions are untouched.
+     * @param {string} convoId - The conversation ID.
+     * @param {UpdateConvoMentionsRequest} data - The pending list as it should now stand.
+     * @returns {Promise<ConvoMentionsResponse>} The convo's mentions after the change.
+     */
+    updateConvoMentions(convoId: string, data: UpdateConvoMentionsRequest): Promise<ConvoMentionsResponse>;
+    /**
+     * Send a convo's pending mentions: they are added to the convo's own
+     * message in its chat, and each person newly mentioned is told.
+     * @param {string} convoId - The conversation ID.
+     * @returns {Promise<SendConvoMentionsResponse>} The convo's message, and the mentions now marked sent.
+     */
+    sendConvoMentions(convoId: string): Promise<SendConvoMentionsResponse>;
+    /**
+     * Take a sent mention off the convo's message. A person's mention task is
+     * deleted with it.
+     * @param {string} convoId - The conversation ID.
+     * @param {'user'|'asset'} kind - What is mentioned.
+     * @param {string} targetId - The user's or asset's id.
+     * @returns {Promise<ConvoMentionsResponse>} The convo's mentions after the change.
+     */
+    removeConvoMention(convoId: string, kind: "user" | "asset", targetId: string): Promise<ConvoMentionsResponse>;
+    /**
+     * Write or edit a convo's summary by hand. For whoever started the convo
+     * and anyone who was on the call; works with AI summaries off.
+     * @param {string} convoId - The conversation ID.
+     * @param {string} summary - Markdown. Empty removes the summary.
+     * @returns {Promise<UpdateConvoSummaryResponse>} The summary as kept.
+     */
+    updateConvoSummary(convoId: string, summary: string): Promise<UpdateConvoSummaryResponse>;
+    /**
+     * List the tasks made from a convo, oldest first.
+     * @param {string} convoId - The conversation ID.
+     * @returns {Promise<ConvoTasksResponse>} The tasks, as a chat draws them on a card.
+     */
+    getConvoTasks(convoId: string): Promise<ConvoTasksResponse>;
     /**
      * Promote a convo's recording or transcript to a standalone asset.
      *
